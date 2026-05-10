@@ -39,7 +39,7 @@
                     <span class="tree-label">
                         {{ line.data ? (line.data.prompt || 'Node ' + line.idx).substring(0, 35) : '—' }}
                     </span>
-                    <span class="tree-depth">d{{ line.data?.depth || 0 }}</span>
+                    <span class="tree-depth">d{{ line.depth }}</span>
                 </div>
             </div>
         </div>

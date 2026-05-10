@@ -235,7 +235,7 @@ export default {
             }
         },
         currentNode: {
-            async handler(newNode, oldNode) {
+            async handler(newNode) {
                 if (newNode !== undefined && newNode !== null) {
                     this.visitedNodes.add(newNode);
                 }

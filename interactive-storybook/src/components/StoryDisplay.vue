@@ -243,17 +243,20 @@ export default {
             this.editingPrompt = false;
             this.editPromptBuffer = '';
         },
-        async createNewNode(parentNodeId, choiceText) {
+        async createNewNode(parentNodeId, choiceText, targetNodeIndex) {
             try {
                 if (!this.story) {
                     throw new Error("Story not loaded");
                 }
-                // Find next available nodeId
-                // const maxNodeId = Math.max(...this.story.nodes
-                //     .filter(n => n)
-                //     .map(n => n.nodeId), -1);
-                // const nextNodeIndex = maxNodeId + 1;
-                const nextNodeIndex = this.story.nodes.length;
+                // Use targetNodeIndex if provided, otherwise determine from array length
+                const nextNodeIndex = (targetNodeIndex !== undefined && targetNodeIndex >= 0)
+                    ? targetNodeIndex
+                    : this.story.nodes.length;
+
+                // Pad the nodes array so the target index exists
+                while (this.story.nodes.length <= nextNodeIndex) {
+                    this.story.nodes.push(null);
+                }
 
                 const response = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node`, {
                     method: 'PUT',
@@ -261,8 +264,8 @@ export default {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        nodeIndex: nextNodeIndex, // This will be the index in the array
-                        nodeId: nextNodeIndex,    // Add this to track the node ID
+                        nodeIndex: nextNodeIndex,
+                        nodeId: nextNodeIndex,
                         prompt: choiceText || 'Continue your story here...',
                         choices: [],
                         image: '',
@@ -365,7 +368,7 @@ export default {
                 // Create the node at nodeIndex if it doesn't exist yet
                 if (!this.story.nodes[nodeIndex]) {
                     const choice = this.story?.nodes[this.currentNode]?.choices?.find(c => c.nextNodeId === nodeIndex);
-                    await this.createNewNode(this.currentNode, choice ? choice.text : 'Continue...');
+                    await this.createNewNode(this.currentNode, choice ? choice.text : 'Continue...', nodeIndex);
                 }
 
                 // Release loading BEFORE setting currentNode so the watcher

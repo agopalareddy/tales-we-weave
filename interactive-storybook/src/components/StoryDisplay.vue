@@ -22,46 +22,25 @@
         <div v-if="showTree" class="tree-panel">
             <div class="tree-title">Story Branches</div>
             <div class="tree-content">
-                <ul class="tree-root">
-                    <li v-for="node in treeNodes" :key="node.idx">
-                        <div
-                            class="tree-node"
-                            :class="{
-                                'tree-node--current': node.idx === currentNode,
-                                'tree-node--visited': visitedNodes.has(node.idx),
-                                'tree-node--empty': !node.data
-                            }"
-                            @click="node.data && nodeNav(node.idx)"
-                            :title="node.data ? (node.data.prompt || '').substring(0, 100) : 'Empty'"
-                        >
-                            <span class="tree-dot" :class="{ 'tree-dot--has-image': node.data?.image }"></span>
-                            <span class="tree-label">
-                                {{ node.data ? (node.data.prompt || 'Node ' + node.idx).substring(0, 30) : '—' }}
-                            </span>
-                            <span class="tree-depth">d{{ node.data?.depth || 0 }}</span>
-                        </div>
-                        <ul v-if="node.children.length" class="tree-children">
-                            <li v-for="child in node.children" :key="child.idx">
-                                <div
-                                    class="tree-node tree-node--child"
-                                    :class="{
-                                        'tree-node--current': child.idx === currentNode,
-                                        'tree-node--visited': visitedNodes.has(child.idx),
-                                        'tree-node--empty': !child.data
-                                    }"
-                                    @click="child.data && nodeNav(child.idx)"
-                                    :title="child.data ? (child.data.prompt || '').substring(0, 100) : 'Empty'"
-                                >
-                                    <span class="tree-dot" :class="{ 'tree-dot--has-image': child.data?.image }"></span>
-                                    <span class="tree-label">
-                                        {{ child.data ? (child.data.prompt || 'Node ' + child.idx).substring(0, 25) : '—' }}
-                                    </span>
-                                    <span class="tree-depth">d{{ child.data?.depth || 0 }}</span>
-                                </div>
-                            </li>
-                        </ul>
-                    </li>
-                </ul>
+                <div v-for="line in flattenTree" :key="line.idx" class="tree-node" :class="{
+                    'tree-node--current': line.idx === currentNode,
+                    'tree-node--visited': visitedNodes.has(line.idx),
+                    'tree-node--empty': !line.data
+                }"
+                    :style="{ paddingLeft: (line.depth * 20 + 8) + 'px' }"
+                    :title="line.data ? (line.data.prompt || '').substring(0, 100) : 'Empty'"
+                    @click="line.data && nodeNav(line.idx)"
+                >
+                    <span class="tree-indent">
+                        <span v-if="line.depth > 0" class="tree-line"></span>
+                        <span v-if="line.hasMoreSiblings" class="tree-branch"></span>
+                    </span>
+                    <span class="tree-dot" :class="{ 'tree-dot--has-image': line.data?.image }"></span>
+                    <span class="tree-label">
+                        {{ line.data ? (line.data.prompt || 'Node ' + line.idx).substring(0, 35) : '—' }}
+                    </span>
+                    <span class="tree-depth">d{{ line.data?.depth || 0 }}</span>
+                </div>
             </div>
         </div>
 
@@ -202,28 +181,29 @@ export default {
                 ? "Please update the story title from 'New Story' to enable choice regeneration"
                 : "Generate new choices for this node";
         },
-        treeNodes() {
+        flattenTree() {
             if (!this.story?.nodes) return [];
-            const buildTree = (nodeIdx, depth) => {
-                if (nodeIdx >= this.story.nodes.length) return null;
+            const result = [];
+            const walk = (nodeIdx, depth, parentHasMoreSiblings) => {
+                if (nodeIdx >= this.story.nodes.length) return;
                 const node = this.story.nodes[nodeIdx];
-                const result = {
+                const choices = node ? (node.choices || []) : [];
+                const validChildren = choices.filter(c => c.nextNodeId !== undefined && c.nextNodeId !== null);
+                result.push({
                     idx: nodeIdx,
                     data: node,
-                    children: [],
-                };
-                if (node && depth < 10) {
-                    const choices = node.choices || [];
-                    for (const ch of choices) {
-                        if (ch.nextNodeId !== undefined && ch.nextNodeId !== null) {
-                            const child = buildTree(ch.nextNodeId, depth + 1);
-                            if (child) result.children.push(child);
-                        }
+                    depth,
+                    hasMoreSiblings: parentHasMoreSiblings,
+                });
+                if (node && depth < 15) {
+                    for (let i = 0; i < validChildren.length; i++) {
+                        const ch = validChildren[i];
+                        walk(ch.nextNodeId, depth + 1, i < validChildren.length - 1);
                     }
                 }
-                return result;
             };
-            return [buildTree(0, 0)];
+            walk(0, 0, false);
+            return result;
         },
     },
     watch: {
@@ -692,39 +672,64 @@ export default {
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
-.tree-root { list-style: none; padding: 0; margin: 0; }
-.tree-children { list-style: none; padding-left: var(--space-xl); margin: 0; border-left: 1px dashed var(--border); }
+
+.tree-content {
+    font-size: var(--text-xs);
+}
+.tree-node--child { opacity: 1; }
+
+.tree-indent {
+    position: relative;
+    width: 12px;
+    flex-shrink: 0;
+}
+.tree-line {
+    position: absolute;
+    left: 4px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border);
+}
+.tree-branch {
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    width: 8px;
+    height: 1px;
+    background: var(--border);
+}
 
 .tree-node {
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-    padding: 3px var(--space-xs);
+    padding: 2px var(--space-xs);
     border-radius: var(--radius-sm);
     cursor: pointer;
     font-size: var(--text-xs);
     transition: background var(--transition-fast);
+    white-space: nowrap;
 }
 .tree-node:hover { background: var(--bg-hover); }
 .tree-node--current { background: var(--accent-soft); border: 1px solid var(--accent); font-weight: 700; }
 .tree-node--visited { color: var(--text-primary); }
 .tree-node--empty { color: var(--text-muted); opacity: 0.5; cursor: default; }
-.tree-node--child { padding-left: var(--space-md); }
 
 .tree-dot {
-    width: 8px; height: 8px;
+    width: 6px; height: 6px;
     border-radius: 50%;
     background: var(--border);
     flex-shrink: 0;
 }
 .tree-dot--has-image { background: var(--accent); }
-.tree-node--current .tree-dot { background: var(--accent); width: 10px; height: 10px; }
+.tree-node--current .tree-dot { background: var(--accent); width: 8px; height: 8px; }
 
 .tree-label {
     flex: 1;
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    font-size: 11px;
 }
 .tree-depth {
     font-size: 10px;
@@ -732,6 +737,7 @@ export default {
     background: var(--bg-primary);
     padding: 1px 4px;
     border-radius: var(--radius-full);
+    flex-shrink: 0;
 }
 
 /* ── Path Info ─────────────────────────── */

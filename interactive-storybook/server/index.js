@@ -449,9 +449,11 @@ function setupRoutes() {
           choices: nodeData.choices || [],
           image: nodeData.image || "",
           parentNodeId: nodeData.parentNodeId,
-          depth: parentNode ? parentNode.depth + 1 : 0,
+          depth: parentNode
+            ? (parentNode.depth !== undefined ? parentNode.depth + 1 : 1)
+            : 0,
           pathToRoot: parentNode
-            ? [...parentNode.pathToRoot, parentNode.nodeId]
+            ? [...(parentNode.pathToRoot || []), parentNode.nodeId]
             : [],
         };
 

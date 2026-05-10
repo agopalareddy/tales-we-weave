@@ -455,12 +455,20 @@ function setupRoutes() {
             : [],
         };
 
-        // Update story with new node
+        // Pad array with nulls up to the target index, then set the node
+        const targetIndex = nodeData.nodeIndex;
+        while (story.nodes.length <= targetIndex) {
+          story.nodes.push(null);
+        }
+
+        // Update story with new node at the correct index
         const result = await storiesCollection.updateOne(
           { _id: id },
           {
-            $push: { nodes: newNode },
-            $set: { lastNodeId: newNodeId },
+            $set: {
+              [`nodes.${targetIndex}`]: newNode,
+              lastNodeId: newNodeId,
+            },
           }
         );
 

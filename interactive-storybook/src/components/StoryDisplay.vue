@@ -1,9 +1,26 @@
 <template>
-    <div v-if="story">
-        <!-- Add path visualization -->
-        <div class="path-info" v-if="currentNodeData">
-            <span>Depth: {{ currentNodeData.depth }}</span>
-            <span>Path: {{ currentNodeData.pathToRoot.join(' → ') }}</span>
+    <div v-if="storyLoading" class="flex-center" style="padding: var(--space-3xl); flex-direction: column; gap: var(--space-md);">
+        <div class="spinner"></div>
+        <p class="text-muted">Loading story...</p>
+    </div>
+    <div v-else-if="storyNotFound" class="flex-center" style="padding: var(--space-3xl); flex-direction: column; gap: var(--space-md);">
+        <p style="font-size: var(--text-lg);">Story not found</p>
+        <router-link to="/" class="btn btn-primary">Back to Stories</router-link>
+    </div>
+    <div v-else-if="storyError" class="flex-center" style="padding: var(--space-3xl); flex-direction: column; gap: var(--space-md);">
+        <p class="error-message">{{ storyError }}</p>
+        <button class="btn btn-primary" @click="fetchStory">Try Again</button>
+    </div>
+    <div v-else-if="story">
+        <div class="path-info" v-if="currentNodeData && currentNodeData.pathToRoot?.length">
+            <span class="path-label">Path:</span>
+            <span class="path-breadcrumbs">
+                <span v-for="(pid, pidx) in currentNodeData.pathToRoot" :key="pidx" class="crumb-link" @click="currentNode = pid">
+                    Node {{ pid }}
+                </span>
+                <span class="crumb-current">Node {{ currentNode }}</span>
+            </span>
+            <span class="depth-badge">Depth {{ currentNodeData.depth }}</span>
         </div>
         <div class="title-container">
             <input v-model="story.title" @input="handleTitleChange" :class="{ 'edited': titleChanged }">
@@ -11,7 +28,19 @@
                 Save Title
             </button>
         </div>
-        <p>{{ story.nodes[currentNode]?.prompt || 'Loading node...' }}</p>
+        <div class="prompt-section">
+            <div v-if="!editingPrompt" class="prompt-display">
+                <p class="prompt-text">{{ story.nodes[currentNode]?.prompt || 'Loading node...' }}</p>
+                <button @click="toggleEditPrompt" class="btn-edit-prompt" title="Edit prompt">&#9998;</button>
+            </div>
+            <div v-else class="prompt-edit">
+                <textarea v-model="editPromptBuffer" class="prompt-textarea" rows="4"></textarea>
+                <div class="prompt-edit-actions">
+                    <button @click="savePrompt" class="btn btn-primary btn-sm">Save</button>
+                    <button @click="cancelEditPrompt" class="btn btn-secondary btn-sm">Cancel</button>
+                </div>
+            </div>
+        </div>
         <div v-if="loading">Generating image...</div>
         <div v-if="story.nodes[currentNode]?.image" class="image-container">
             <img :src="story.nodes[currentNode].image" alt="Story Image">
@@ -56,12 +85,11 @@
             </div>
         </div>
     </div>
-    <div v-else>
-        Loading story...
-    </div>
+    
 </template>
 
 <script>
+import { useToast } from '@/stores/useToast.js'
 import ChoiceButton from './ChoiceButton.vue';
 import NavigationLinks from './NavigationLinks.vue';
 
@@ -76,10 +104,18 @@ export default {
             story: null,
             currentNode: 0,
             loading: false,
-            apiBaseUrl: process.env.VUE_APP_PORT ? `http://localhost:${process.env.VUE_APP_PORT}` : '',
+            apiBaseUrl: '',
             showDeleteConfirm: false,
             regeneratingChoices: false,
+            storyLoading: false,
+            storyError: null,
+            storyNotFound: false,
+            imageGenerating: false,
+            choicesGenerating: false,
+            nodeCreating: false,
             titleChanged: false,
+            editingPrompt: false,
+            editPromptBuffer: '',
         };
     },
     computed: {
@@ -132,6 +168,49 @@ export default {
             } catch (error) {
                 console.error('Error fetching story:', error);
             }
+        },
+        toggleEditPrompt() {
+            if (this.editingPrompt) {
+                this.editingPrompt = false;
+                return;
+            }
+            const node = this.story?.nodes[this.currentNode];
+            if (!node) return;
+            this.editPromptBuffer = node.prompt || '';
+            this.editingPrompt = true;
+        },
+        async savePrompt() {
+            const node = this.story?.nodes[this.currentNode];
+            if (!node || !this.editPromptBuffer.trim()) return;
+            
+            const storyId = this.$route.params.id;
+            const nodeIndex = this.currentNode;
+            
+            try {
+                const res = await fetch(`${this.apiBaseUrl}/api/stories/${storyId}/node/${nodeIndex}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...node,
+                        prompt: this.editPromptBuffer.trim()
+                    })
+                });
+                
+                if (!res.ok) throw new Error('Failed to save');
+                const data = await res.json();
+                if (data.success) {
+                    this.story.nodes[this.currentNode].prompt = this.editPromptBuffer.trim();
+                    this.editingPrompt = false;
+                    try { this.toast.addToast('success', 'Prompt saved'); } catch(e) { console.error(e); }
+                }
+            } catch (error) {
+                console.error('Error saving prompt:', error);
+                try { this.toast.addToast('error', 'Failed to save prompt'); } catch(e) { console.error(e); }
+            }
+        },
+        cancelEditPrompt() {
+            this.editingPrompt = false;
+            this.editPromptBuffer = '';
         },
         async createNewNode(parentNodeId, choiceText) {
             try {
@@ -235,7 +314,6 @@ export default {
                 if (!saveResponse.ok) throw new Error('Failed to save image');
 
                 // Update local state after server confirms
-                await this.fetchStory();
             } catch (error) {
                 console.error('Error:', error);
                 this.error = error.message;
@@ -317,7 +395,6 @@ export default {
                 this.story.nodes[this.currentNode].choices = data.choices;
 
                 // Fetch fresh story data to ensure consistency
-                await this.fetchStory();
 
             } catch (error) {
                 console.error('Error regenerating choices:', error);
@@ -359,7 +436,6 @@ export default {
                 console.error('Error updating story title:', error);
                 this.error = error.message;
                 // Revert title if update failed
-                await this.fetchStory();
             }
         },
         confirmDelete() {
@@ -402,7 +478,6 @@ export default {
             } catch (error) {
                 console.error('Error updating story title:', error);
                 this.error = error.message;
-                await this.fetchStory();
             }
         },
 
@@ -423,9 +498,10 @@ export default {
             }
         }
     },
-    async mounted() {
-        await this.fetchStory();
-    }
+    mounted() {
+        this.toast = useToast();
+        this.fetchStory();
+    },
 };
 </script>
 

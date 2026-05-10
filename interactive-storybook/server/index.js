@@ -11,8 +11,40 @@ const saltRounds = 10;
 const { OpenAI } = require("openai");
 const axios = require("axios");
 const fs = require("fs");
+const crypto = require("crypto");
 const app = express();
+// ── Auth helpers ──
+function generateToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
 
+function sanitizeUser(user) {
+  if (!user) return null;
+  const { password, ...safe } = user;
+  return safe;
+}
+
+async function authenticateUser(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    if (!usersCollection) {
+      return res.status(503).json({ error: "Database offline" });
+    }
+    const user = await usersCollection.findOne({ token });
+    if (!user) {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error("Auth error:", error);
+    res.status(500).json({ error: "Authentication failed" });
+  }
+}
 // ── fal.ai usage tracking ──
 const FAL_USAGE_FILE = path.join(__dirname, "../fal_usage.json");
 const FAL_DAILY_LIMIT = parseInt(process.env.FAL_DAILY_LIMIT) || 50;
@@ -222,6 +254,16 @@ function setupRoutes() {
         res.status(500).json({ error: "Failed to fetch stories" });
       }
     });
+    // Get current user's stories
+    app.get("/api/my-stories", authenticateUser, async (req, res) => {
+      try {
+        const stories = await storiesCollection.find({ userId: req.user._id.toString() }).toArray();
+        res.json(stories);
+      } catch (error) {
+        console.error("Error fetching my stories:", error);
+        res.status(500).json({ error: "Failed to fetch stories" });
+      }
+    });
     // Get a specific story
     app.get("/api/stories/:id", async (req, res) => {
       try {
@@ -234,10 +276,11 @@ function setupRoutes() {
       }
     });
     // Add a new story
-    app.post("/api/stories", async (req, res) => {
+    app.post("/api/stories", authenticateUser, async (req, res) => {
       try {
         const story = {
           ...req.body,
+          userId: req.user._id.toString(),
           createdAt: new Date(),
           updatedAt: new Date(),
           nodes: [
@@ -447,10 +490,12 @@ function setupRoutes() {
         const { username, password } = req.body;
         const user = await usersCollection.findOne({ username });
         if (user) {
-          // Compare the provided password with the stored hashed password
           const passwordMatch = await bcrypt.compare(password, user.password);
           if (passwordMatch) {
-            res.json(user);
+            const token = generateToken();
+            await usersCollection.updateOne({ _id: user._id }, { $set: { token } });
+            const safeUser = sanitizeUser({ ...user, token });
+            res.json(safeUser);
           } else {
             res.status(401).json({ error: "Wrong Password" });
           }
@@ -467,20 +512,28 @@ function setupRoutes() {
       try {
         const { username, password } = req.body;
         const hashedPassword = await bcrypt.hash(password, saltRounds);
-        const newUser = { username, password: hashedPassword };
         const existingUser = await usersCollection.findOne({ username });
         if (existingUser) {
           res.status(400).json({ error: "Username already exists" });
           return;
         }
+        const token = generateToken();
+        const newUser = { username, password: hashedPassword, token };
         const result = await usersCollection.insertOne(newUser);
-        res.json(result);
+        const safeUser = sanitizeUser({ ...newUser, _id: result.insertedId });
+        res.json(safeUser);
       } catch (error) {
         console.error("Error registering user:", error);
         res.status(500).json({ error: "Failed to register user" });
       }
     });
 
+
+    // Get current user by token
+    app.get("/api/me", authenticateUser, async (req, res) => {
+      const safeUser = sanitizeUser(req.user);
+      res.json(safeUser);
+    });
     // Image generation endpoint (uses fal.ai flux/schnell)
     app.post("/api/generate-image", async (req, res) => {
       if (!req.body || !req.body.prompt) {
@@ -749,6 +802,7 @@ connectToDatabase();
 // _id: (ObjectID, automatically generated)
 // username: (String, unique)
 // password: (String, hashed and salted for security)
+// token: (String, authentication token)
 // progress: (Array of Objects) - This will store the user's progress in different stories. Each object in the array could have:
 //   storyId: (ObjectID, referencing stories collection)
 //   currentNode: (Number, indicating the current node in the story)

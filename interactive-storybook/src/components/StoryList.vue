@@ -1,77 +1,107 @@
 <template>
-    <div>
-        <h2>Choose a Story</h2>
-        <button @click="createNewStory" class="create-story-btn">Create New Story</button>
-        <ul>
-            <li v-for="story in stories" :key="story._id">
-                <router-link :to="`/story/${story._id}`">{{ story.title }}</router-link>
-            </li>
-        </ul>
+  <div class="story-list">
+    <div class="list-header">
+      <h1>My Stories</h1>
+      <p class="text-muted">Choose a story to continue your adventure</p>
     </div>
+
+    <div v-if="loading" class="story-grid">
+      <div v-for="n in 6" :key="n" class="skeleton-card card">
+        <div class="skeleton skeleton-thumb"></div>
+        <div class="skeleton skeleton-title" style="height:1rem; width:60%; margin:1rem"></div>
+        <div class="skeleton skeleton-meta" style="height:0.75rem; width:40%; margin:0 1rem 1rem"></div>
+      </div>
+    </div>
+
+    <div v-else-if="error" class="flex-center" style="flex-direction:column; gap:var(--space-md); padding:var(--space-3xl)">
+      <p class="error-message">{{ error }}</p>
+      <button class="btn btn-primary" @click="fetchStories">Try Again</button>
+    </div>
+
+    <div v-else-if="stories.length === 0" class="flex-center" style="flex-direction:column; gap:var(--space-lg); padding:var(--space-3xl)">
+      <p style="font-size:var(--text-lg); color:var(--text-muted)">No stories yet. Create your first one!</p>
+      <button class="btn btn-primary" @click="createNewStory" :disabled="creating">
+        {{ creating ? 'Creating...' : 'Create Your First Story' }}
+      </button>
+    </div>
+
+    <div v-else class="story-grid">
+      <CreateStoryCard :loading="creating" @create="createNewStory" />
+      <StoryCard v-for="story in stories" :key="story._id" :story="story" />
+    </div>
+  </div>
 </template>
 
 <script>
+import StoryCard from './StoryCard.vue'
+import CreateStoryCard from './CreateStoryCard.vue'
+import { useToast } from '@/stores/useToast.js'
+
 export default {
-    data() {
-        return {
-            stories: [],
-            apiBaseUrl: process.env.VUE_APP_PORT ? `http://localhost:${process.env.VUE_APP_PORT}` : ''
-        };
-    },
-    methods: {
-        async createNewStory() {
-            try {
-                const response = await fetch(`${this.apiBaseUrl}/api/stories`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        title: 'New Story',
-                        nodes: [{
-                            prompt: 'Start your story here...',
-                            choices: [],
-                            image: '',
-                            nodeIndex: 0
-                        }],
-                        lastNodeId: 0
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to create story');
-                }
-
-                const result = await response.json();
-                this.$router.push(`/story/${result.insertedId}`);
-            } catch (error) {
-                console.error('Error creating story:', error);
-            }
-        }
-    },
-    async mounted() {
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/api/stories`);
-            this.stories = await response.json();
-        } catch (error) {
-            console.error('Error fetching stories:', error);
-        }
+  name: 'StoryList',
+  components: { StoryCard, CreateStoryCard },
+  data() {
+    return {
+      stories: [],
+      apiBaseUrl: '',
+      loading: true,
+      error: null,
+      creating: false
     }
-};
+  },
+  async mounted() {
+    this.toast = useToast()
+    await this.fetchStories()
+  },
+  methods: {
+    async fetchStories() {
+      this.loading = true
+      this.error = null
+      try {
+        const res = await fetch(this.apiBaseUrl + '/api/stories')
+        if (!res.ok) throw new Error('Failed to load stories')
+        this.stories = await res.json()
+      } catch (e) {
+        this.error = e.message
+        this.toast.addToast('error', 'Failed to load stories')
+      } finally {
+        this.loading = false
+      }
+    },
+    async createNewStory() {
+      this.creating = true
+      try {
+        const res = await fetch(this.apiBaseUrl + '/api/stories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: 'New Story',
+            nodes: [{ prompt: 'Start your story here...', choices: [], image: '', nodeIndex: 0 }],
+            lastNodeId: 0
+          })
+        })
+        if (!res.ok) throw new Error('Failed to create story')
+        const result = await res.json()
+        this.$router.push('/story/' + result.insertedId)
+      } catch (e) {
+        this.toast.addToast('error', 'Failed to create story')
+      } finally {
+        this.creating = false
+      }
+    }
+  }
+}
 </script>
 
 <style scoped>
-.create-story-btn {
-    margin: 1rem;
-    padding: 0.5rem 1rem;
-    background-color: #42b983;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
+.story-list { max-width: 1200px; margin: 0 auto; }
+.list-header { margin-bottom: var(--space-xl); }
+.list-header h1 { font-size: var(--text-3xl); margin-bottom: var(--space-xs); }
+.story-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-lg);
 }
-
-.create-story-btn:hover {
-    background-color: #3aa876;
-}
+.skeleton-card { min-height: 260px; }
+.skeleton-thumb { height: 160px; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
 </style>

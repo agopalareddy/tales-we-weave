@@ -1,91 +1,161 @@
 <template>
-    <div v-if="storyLoading" class="flex-center" style="padding: var(--space-3xl); flex-direction: column; gap: var(--space-md);">
+    <div v-if="storyLoading" class="flex-center story-state">
         <div class="spinner"></div>
-        <p class="text-muted">Loading story...</p>
+        <p class="text-muted mt-md">Loading story...</p>
     </div>
-    <div v-else-if="storyNotFound" class="flex-center" style="padding: var(--space-3xl); flex-direction: column; gap: var(--space-md);">
+    <div v-else-if="storyNotFound" class="flex-center story-state">
         <p style="font-size: var(--text-lg);">Story not found</p>
-        <router-link to="/" class="btn btn-primary">Back to Stories</router-link>
+        <router-link to="/" class="btn btn-primary mt-md">Back to Stories</router-link>
     </div>
-    <div v-else-if="storyError" class="flex-center" style="padding: var(--space-3xl); flex-direction: column; gap: var(--space-md);">
+    <div v-else-if="storyError" class="flex-center story-state">
         <p class="error-message">{{ storyError }}</p>
-        <button class="btn btn-primary" @click="fetchStory">Try Again</button>
+        <button class="btn btn-primary mt-md" @click="fetchStory">Try Again</button>
     </div>
-    <div v-else-if="story">
-        <div class="path-info" v-if="currentNodeData && currentNodeData.pathToRoot?.length">
-            <span class="path-label">Path:</span>
-            <span class="path-breadcrumbs">
-                <span v-for="(pid, pidx) in currentNodeData.pathToRoot" :key="pidx" class="crumb-link" @click="nodeNav(pid)">
-                    Node {{ pid }}
-                </span>
-                <span class="crumb-current">Node {{ currentNode }}</span>
-            </span>
-            <span class="depth-badge">Depth {{ currentNodeData.depth }}</span>
-        </div>
-        <div class="title-container">
-            <input v-model="story.title" @input="handleTitleChange" :class="{ 'edited': titleChanged }">
-            <button v-if="titleChanged" @click="saveTitle" class="save-title-btn" :disabled="!story.title.trim()">
-                Save Title
-            </button>
-        </div>
-        <div class="prompt-section">
-            <div v-if="!editingPrompt" class="prompt-display">
-                <p class="prompt-text">{{ story.nodes[currentNode]?.prompt || 'Loading node...' }}</p>
-                <button @click="toggleEditPrompt" class="btn-edit-prompt" title="Edit prompt">&#9998;</button>
+    <div v-else-if="story" class="story-view">
+        <!-- Story Tree Toggle -->
+        <button class="tree-toggle" @click="showTree = !showTree" :aria-expanded="showTree">
+            <span v-if="showTree">✕ Hide Tree</span>
+            <span v-else>🌳 Show Story Tree</span>
+        </button>
+
+        <!-- Story Tree Panel -->
+        <div v-if="showTree" class="tree-panel">
+            <div class="tree-title">Story Branches</div>
+            <div class="tree-content">
+                <ul class="tree-root">
+                    <li v-for="node in treeNodes" :key="node.idx">
+                        <div
+                            class="tree-node"
+                            :class="{
+                                'tree-node--current': node.idx === currentNode,
+                                'tree-node--visited': visitedNodes.has(node.idx),
+                                'tree-node--empty': !node.data
+                            }"
+                            @click="node.data && nodeNav(node.idx)"
+                            :title="node.data ? (node.data.prompt || '').substring(0, 100) : 'Empty'"
+                        >
+                            <span class="tree-dot" :class="{ 'tree-dot--has-image': node.data?.image }"></span>
+                            <span class="tree-label">
+                                {{ node.data ? (node.data.prompt || 'Node ' + node.idx).substring(0, 30) : '—' }}
+                            </span>
+                            <span class="tree-depth">d{{ node.data?.depth || 0 }}</span>
+                        </div>
+                        <ul v-if="node.children.length" class="tree-children">
+                            <li v-for="child in node.children" :key="child.idx">
+                                <div
+                                    class="tree-node tree-node--child"
+                                    :class="{
+                                        'tree-node--current': child.idx === currentNode,
+                                        'tree-node--visited': visitedNodes.has(child.idx),
+                                        'tree-node--empty': !child.data
+                                    }"
+                                    @click="child.data && nodeNav(child.idx)"
+                                    :title="child.data ? (child.data.prompt || '').substring(0, 100) : 'Empty'"
+                                >
+                                    <span class="tree-dot" :class="{ 'tree-dot--has-image': child.data?.image }"></span>
+                                    <span class="tree-label">
+                                        {{ child.data ? (child.data.prompt || 'Node ' + child.idx).substring(0, 25) : '—' }}
+                                    </span>
+                                    <span class="tree-depth">d{{ child.data?.depth || 0 }}</span>
+                                </div>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
             </div>
-            <div v-else class="prompt-edit">
-                <textarea v-model="editPromptBuffer" class="prompt-textarea" rows="4"></textarea>
-                <div class="prompt-edit-actions">
-                    <button @click="savePrompt" class="btn btn-primary btn-sm">Save</button>
-                    <button @click="cancelEditPrompt" class="btn btn-secondary btn-sm">Cancel</button>
+        </div>
+
+        <!-- Main Story Content -->
+        <div class="story-main">
+            <div class="path-info" v-if="currentNodeData && currentNodeData.pathToRoot?.length">
+                <span class="path-label">Path:</span>
+                <span class="path-breadcrumbs">
+                    <span v-for="(pid, pidx) in currentNodeData.pathToRoot" :key="pidx" class="crumb-link" @click="nodeNav(pid)">
+                        Node {{ pid }}
+                    </span>
+                    <span class="crumb-arrow">→</span>
+                    <span class="crumb-current">Node {{ currentNode }}</span>
+                </span>
+                <span class="depth-badge">Depth {{ currentNodeData.depth }}</span>
+            </div>
+
+            <div class="title-row">
+                <input
+                    v-model="story.title"
+                    @input="handleTitleChange"
+                    :class="{ 'edited': titleChanged }"
+                    class="title-input"
+                    aria-label="Story title"
+                    placeholder="Story title"
+                >
+                <button v-if="titleChanged" @click="saveTitle" class="btn btn-primary btn-sm" :disabled="!story.title.trim()">
+                    Save
+                </button>
+            </div>
+
+            <div class="prompt-section">
+                <div v-if="!editingPrompt" class="prompt-display">
+                    <p class="prompt-text">{{ story.nodes[currentNode]?.prompt || 'Loading node...' }}</p>
+                    <button @click="toggleEditPrompt" class="btn-edit-prompt" title="Edit prompt">✎</button>
+                </div>
+                <div v-else class="prompt-edit">
+                    <textarea v-model="editPromptBuffer" class="prompt-textarea" rows="3"></textarea>
+                    <div class="prompt-edit-actions">
+                        <button @click="savePrompt" class="btn btn-primary btn-sm">Save</button>
+                        <button @click="cancelEditPrompt" class="btn btn-ghost btn-sm">Cancel</button>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div v-if="loading">Generating image...</div>
-        <div v-if="story.nodes[currentNode]?.image" class="image-container">
-            <img :src="story.nodes[currentNode].image" alt="Story Image">
-            <button @click="regenerateImage" :disabled="loading" class="regenerate-btn">
-                🔄 Regenerate Image
-            </button>
-        </div>
-        <div v-if="error" class="error-message">
-            {{ error }}
-        </div>
-        <ul v-if="story.nodes[currentNode]?.choices">
-            <li v-for="(choice, index) in story.nodes[currentNode].choices" :key="index">
-                <ChoiceButton @click="handleChoice(choice.nextNodeId)">
+
+            <div v-if="loading" class="text-muted" style="padding: var(--space-md); text-align: center;">Generating image…</div>
+
+            <div v-if="story.nodes[currentNode]?.image" class="image-wrapper">
+                <img :src="story.nodes[currentNode].image" alt="Story illustration">
+                <button @click="regenerateImage" :disabled="loading" class="img-regen-btn" title="Regenerate image">
+                    🔄
+                </button>
+            </div>
+
+            <div v-if="error" class="error-message">{{ error }}</div>
+
+            <div class="choices-section">
+                <ChoiceButton
+                    v-for="(choice, index) in story.nodes[currentNode]?.choices"
+                    :key="index"
+                    @click="handleChoice(choice.nextNodeId)"
+                >
                     {{ choice.text }}
                 </ChoiceButton>
-            </li>
-            <!-- Add regenerate choices button -->
-            <button @click="regenerateChoices" :disabled="isNewStory" :title="regenerateButtonTitle"
-                class="regenerate-btn" :class="{ 'disabled': isNewStory }">
-                <span>🔄 Regenerate Choices</span>
-                <span v-if="isNewStory" class="disabled-hint">
-                    (Update story title to enable)
-                </span>
-            </button>
-        </ul>
-        <NavigationLinks />
-        <!-- Add this near NavigationLinks -->
-        <div class="actions">
-            <button @click="confirmDelete" class="delete-btn">
-                Delete Story
-            </button>
+                <button
+                    v-if="story.nodes[currentNode]?.choices?.length"
+                    @click="regenerateChoices"
+                    :disabled="isNewStory"
+                    :title="regenerateButtonTitle"
+                    class="choice-regen-btn"
+                    :class="{ 'disabled': isNewStory }"
+                >
+                    🔄 Regenerate Choices
+                    <span v-if="isNewStory" class="disabled-hint">(update title first)</span>
+                </button>
+            </div>
+
+            <NavigationLinks />
+
+            <button @click="confirmDelete" class="delete-btn">Delete Story</button>
         </div>
-        <!-- Add confirmation dialog -->
+
+        <!-- Delete confirmation modal -->
         <div v-if="showDeleteConfirm" class="delete-modal">
             <div class="delete-modal-content">
                 <h3>Delete Story?</h3>
                 <p>Are you sure you want to delete "{{ story.title }}"? This cannot be undone.</p>
                 <div class="delete-modal-actions">
-                    <button @click="deleteStory" class="confirm-delete">Delete</button>
-                    <button @click="showDeleteConfirm = false" class="cancel-delete">Cancel</button>
+                    <button @click="deleteStory" class="btn btn-danger">Delete</button>
+                    <button @click="showDeleteConfirm = false" class="btn btn-ghost">Cancel</button>
                 </div>
             </div>
         </div>
     </div>
-    
 </template>
 
 <script>
@@ -116,6 +186,8 @@ export default {
             titleChanged: false,
             editingPrompt: false,
             editPromptBuffer: '',
+            showTree: false,
+            visitedNodes: new Set(),
         };
     },
     computed: {
@@ -129,7 +201,30 @@ export default {
             return this.isNewStory
                 ? "Please update the story title from 'New Story' to enable choice regeneration"
                 : "Generate new choices for this node";
-        }
+        },
+        treeNodes() {
+            if (!this.story?.nodes) return [];
+            const buildTree = (nodeIdx, depth) => {
+                if (nodeIdx >= this.story.nodes.length) return null;
+                const node = this.story.nodes[nodeIdx];
+                const result = {
+                    idx: nodeIdx,
+                    data: node,
+                    children: [],
+                };
+                if (node && depth < 10) {
+                    const choices = node.choices || [];
+                    for (const ch of choices) {
+                        if (ch.nextNodeId !== undefined && ch.nextNodeId !== null) {
+                            const child = buildTree(ch.nextNodeId, depth + 1);
+                            if (child) result.children.push(child);
+                        }
+                    }
+                }
+                return result;
+            };
+            return [buildTree(0, 0)];
+        },
     },
     watch: {
         currentNodeData: {
@@ -140,7 +235,10 @@ export default {
             }
         },
         currentNode: {
-            async handler(newNode) {
+            async handler(newNode, oldNode) {
+                if (newNode !== undefined && newNode !== null) {
+                    this.visitedNodes.add(newNode);
+                }
                 if (this.story?.nodes) {
                     if (!this.story.nodes[newNode]) {
                         await this.createNewNode(newNode);
@@ -148,7 +246,6 @@ export default {
                         await this.generateAndSaveImage(newNode);
                     }
                 }
-                // Sync current node to URL for persistence across refreshes
                 const storyId = this.$route.params.id;
                 this.$router.replace({ path: '/story/' + storyId, query: { node: newNode } }).catch(() => {});
             },
@@ -527,313 +624,166 @@ export default {
     },
     mounted() {
         this.toast = useToast();
-        // Restore node position from URL query param
         const nodeParam = parseInt(this.$route.query.node);
         if (!isNaN(nodeParam) && nodeParam >= 0) {
             this.currentNode = nodeParam;
         }
+        this.visitedNodes.add(this.currentNode);
         this.fetchStory();
     },
 };
 </script>
 
 <style scoped>
-.story-display { max-width: 800px; margin: 0 auto; padding: var(--space-lg); }
-
-.loading {
-    padding: var(--space-md);
-    color: var(--text-muted);
-    font-style: italic;
+/* ── Layout ────────────────────────────── */
+.story-state {
+    padding: var(--space-3xl);
+    flex-direction: column;
+    gap: var(--space-md);
+    min-height: 40vh;
 }
 
-img {
-    max-width: 100%;
-    height: auto;
-    margin: var(--space-md) 0;
+.story-view {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--space-lg);
 }
 
-.image-container {
-    position: relative;
-    display: inline-block;
+.story-main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
 }
 
-.regenerate-btn {
-    position: absolute;
-    top: var(--space-sm);
-    right: var(--space-sm);
+/* ── Tree Toggle & Panel ──────────────── */
+.tree-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
     padding: var(--space-xs) var(--space-md);
-    background: var(--bg-card);
+    margin-bottom: var(--space-md);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    background: var(--bg-secondary);
     border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.tree-toggle:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.tree-panel {
+    margin-bottom: var(--space-lg);
+    padding: var(--space-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    max-height: 300px;
+    overflow: auto;
+}
+.tree-title {
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.tree-root { list-style: none; padding: 0; margin: 0; }
+.tree-children { list-style: none; padding-left: var(--space-xl); margin: 0; border-left: 1px dashed var(--border); }
+
+.tree-node {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 3px var(--space-xs);
     border-radius: var(--radius-sm);
     cursor: pointer;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    transition: background-color var(--transition-fast), border-color var(--transition-fast);
+    font-size: var(--text-xs);
+    transition: background var(--transition-fast);
 }
+.tree-node:hover { background: var(--bg-hover); }
+.tree-node--current { background: var(--accent-soft); border: 1px solid var(--accent); font-weight: 700; }
+.tree-node--visited { color: var(--text-primary); }
+.tree-node--empty { color: var(--text-muted); opacity: 0.5; cursor: default; }
+.tree-node--child { padding-left: var(--space-md); }
 
-.regenerate-btn:hover:not(:disabled) {
-    background: var(--bg-hover);
-    border-color: var(--accent);
+.tree-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    flex-shrink: 0;
 }
+.tree-dot--has-image { background: var(--accent); }
+.tree-node--current .tree-dot { background: var(--accent); width: 10px; height: 10px; }
 
-.regenerate-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+.tree-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-
-.story-title {
-    font-size: var(--text-xl);
-    padding: var(--space-sm);
-    margin: var(--space-md) 0;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    width: 80%;
-    max-width: 600px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-}
-
-.story-title:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.path-info {
-    font-size: var(--text-sm);
+.tree-depth {
+    font-size: 10px;
     color: var(--text-muted);
-    margin: var(--space-sm) 0;
+    background: var(--bg-primary);
+    padding: 1px 4px;
+    border-radius: var(--radius-full);
+}
+
+/* ── Path Info ─────────────────────────── */
+.path-info {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
     display: flex;
     align-items: center;
     gap: var(--space-sm);
     flex-wrap: wrap;
+    padding: var(--space-sm) 0;
 }
-
-.path-label {
-    font-weight: 600;
-}
-
-.path-breadcrumbs {
-    display: flex;
-    align-items: center;
-    gap: var(--space-xs);
-}
-
-.crumb-link {
-    color: var(--accent);
-    cursor: pointer;
-    font-weight: 500;
-}
-
-.crumb-link:hover {
-    text-decoration: underline;
-}
-
-.crumb-current {
-    color: var(--text-primary);
-    font-weight: 700;
-}
-
+.path-label { font-weight: 600; }
+.path-breadcrumbs { display: flex; align-items: center; gap: var(--space-xs); }
+.crumb-link { color: var(--accent); cursor: pointer; font-weight: 500; }
+.crumb-link:hover { text-decoration: underline; }
+.crumb-arrow { color: var(--text-muted); margin: 0 2px; }
+.crumb-current { color: var(--text-primary); font-weight: 700; }
 .depth-badge {
     margin-left: auto;
-    padding: var(--space-xs) var(--space-sm);
+    padding: 1px var(--space-sm);
     background: var(--bg-secondary);
     border-radius: var(--radius-full);
     font-size: var(--text-xs);
     color: var(--text-muted);
 }
 
-.actions {
-    margin-top: var(--space-md);
-}
-
-.delete-btn {
-    background-color: var(--danger);
-    color: var(--text-inverse);
-    border: none;
-    padding: var(--space-sm) var(--space-md);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-weight: 600;
-    transition: background-color var(--transition-fast);
-}
-
-.delete-btn:hover {
-    background-color: var(--danger-hover);
-}
-
-.delete-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: var(--bg-overlay);
+/* ── Title ─────────────────────────────── */
+.title-row {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: var(--z-modal-backdrop);
-}
-
-.delete-modal-content {
-    background: var(--bg-card);
-    padding: var(--space-2xl);
-    border-radius: var(--radius-lg);
-    text-align: center;
-    box-shadow: var(--shadow-xl);
-    max-width: 480px;
-    margin: var(--space-lg);
-}
-
-.delete-modal-actions {
-    margin-top: var(--space-md);
-}
-
-.confirm-delete {
-    background-color: var(--danger);
-    color: var(--text-inverse);
-    border: none;
-    padding: var(--space-sm) var(--space-md);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    margin-right: var(--space-md);
-    font-weight: 600;
-}
-
-.confirm-delete:hover {
-    background-color: var(--danger-hover);
-}
-
-.cancel-delete {
-    background-color: var(--border);
-    color: var(--text-primary);
-    border: none;
-    padding: var(--space-sm) var(--space-md);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-weight: 600;
-}
-
-.cancel-delete:hover {
-    background-color: var(--border-strong);
-}
-
-.regenerate-btn {
-    margin-top: var(--space-md);
-    padding: var(--space-sm) var(--space-md);
-    background-color: var(--accent);
-    color: var(--text-inverse);
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
     gap: var(--space-sm);
-    margin-left: auto;
-    margin-right: auto;
-    font-weight: 600;
-    transition: background-color var(--transition-fast);
-}
-
-.regenerate-btn:hover:not(:disabled) {
-    background-color: var(--accent-hover);
-}
-
-.regenerate-btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
-.regenerate-btn.disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    background-color: var(--border);
-}
-
-.disabled-hint {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin-left: var(--space-xs);
-}
-
-.error-message {
-    color: var(--danger);
-    padding: var(--space-sm) var(--space-md);
-    margin: var(--space-sm) 0;
-    border-radius: var(--radius-md);
-    background-color: var(--danger-soft);
-    border: 1px solid var(--danger);
-}
-
-.title-container {
-    display: flex;
-    gap: var(--space-md);
     align-items: center;
-    margin-bottom: var(--space-md);
 }
-
-.title-container input {
+.title-input {
     flex: 1;
     padding: var(--space-sm) var(--space-md);
-    font-size: var(--text-lg);
-    font-weight: 600;
+    font-size: var(--text-xl);
+    font-weight: 700;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--bg-primary);
     color: var(--text-primary);
-    transition: border-color var(--transition-fast);
 }
+.title-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.edited { border-color: var(--accent); }
 
-.title-container input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.edited {
-    border-color: var(--accent);
-}
-
-.save-title-btn {
-    padding: var(--space-sm) var(--space-md);
-    background-color: var(--accent);
-    color: var(--text-inverse);
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-weight: 600;
-    white-space: nowrap;
-    transition: background-color var(--transition-fast);
-}
-
-.save-title-btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
-.save-title-btn:hover:not(:disabled) {
-    background-color: var(--accent-hover);
-}
-
-.prompt-section {
-    margin-bottom: var(--space-lg);
-}
-
-.prompt-display {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-sm);
-}
-
-.prompt-text {
-    flex: 1;
-    font-size: var(--text-md);
-    line-height: 1.6;
-    color: var(--text-primary);
-}
-
+/* ── Prompt ────────────────────────────── */
+.prompt-section { /* spacing handled by story-main gap */ }
+.prompt-display { display: flex; align-items: flex-start; gap: var(--space-sm); }
+.prompt-text { flex: 1; font-size: var(--text-md); line-height: 1.65; color: var(--text-primary); margin: 0; }
 .btn-edit-prompt {
-    padding: var(--space-xs) var(--space-sm);
+    padding: 2px var(--space-sm);
     background: transparent;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -841,19 +791,10 @@ img {
     cursor: pointer;
     font-size: var(--text-sm);
     transition: color var(--transition-fast), border-color var(--transition-fast);
+    flex-shrink: 0;
 }
-
-.btn-edit-prompt:hover {
-    color: var(--accent);
-    border-color: var(--accent);
-}
-
-.prompt-edit {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-}
-
+.btn-edit-prompt:hover { color: var(--accent); border-color: var(--accent); }
+.prompt-edit { display: flex; flex-direction: column; gap: var(--space-sm); }
 .prompt-textarea {
     width: 100%;
     padding: var(--space-sm) var(--space-md);
@@ -864,19 +805,122 @@ img {
     font-size: var(--text-md);
     line-height: 1.6;
     resize: vertical;
-    min-height: 80px;
+    min-height: 72px;
     font-family: var(--font-sans);
 }
+.prompt-textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.prompt-edit-actions { display: flex; gap: var(--space-sm); justify-content: flex-end; }
 
-.prompt-textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
+/* ── Image ─────────────────────────────── */
+.image-wrapper {
+    position: relative;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--bg-secondary);
 }
+.image-wrapper img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: contain;
+}
+.img-regen-btn {
+    position: absolute;
+    top: var(--space-sm);
+    right: var(--space-sm);
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    opacity: 0.8;
+    transition: opacity var(--transition-fast), border-color var(--transition-fast);
+}
+.img-regen-btn:hover { opacity: 1; border-color: var(--accent); }
+.img-regen-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.prompt-edit-actions {
+/* ── Choices ───────────────────────────── */
+.choices-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+.choice-regen-btn {
+    align-self: center;
+    margin-top: var(--space-sm);
+    padding: var(--space-sm) var(--space-lg);
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.choice-regen-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+.choice-regen-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.disabled-hint { font-size: var(--text-xs); color: var(--text-muted); margin-left: var(--space-xs); }
+
+/* ── Delete ────────────────────────────── */
+.delete-btn {
+    align-self: flex-end;
+    padding: var(--space-xs) var(--space-md);
+    background: transparent;
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    color: var(--danger);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.delete-btn:hover { background: var(--danger); color: var(--text-inverse); }
+
+/* ── Delete Modal ──────────────────────── */
+.delete-modal {
+    position: fixed; inset: 0;
+    background: var(--bg-overlay);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: var(--z-modal-backdrop);
+    padding: var(--space-lg);
+}
+.delete-modal-content {
+    background: var(--bg-card);
+    padding: var(--space-2xl);
+    border-radius: var(--radius-lg);
+    text-align: center;
+    box-shadow: var(--shadow-xl);
+    max-width: 420px;
+    width: 100%;
+}
+.delete-modal-content h3 { margin-bottom: var(--space-md); }
+.delete-modal-actions {
+    margin-top: var(--space-lg);
     display: flex;
     gap: var(--space-sm);
-    justify-content: flex-end;
+    justify-content: center;
+}
+
+/* ── Shared ────────────────────────────── */
+.error-message {
+    color: var(--danger);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    background: var(--danger-soft);
+    border: 1px solid var(--danger);
+    font-size: var(--text-sm);
+}
+
+.loading {
+    padding: var(--space-md);
+    color: var(--text-muted);
+    font-style: italic;
 }
 </style>

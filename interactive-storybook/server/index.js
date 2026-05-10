@@ -10,7 +10,110 @@ const bcrypt = require("bcrypt");
 const saltRounds = 10;
 const { OpenAI } = require("openai");
 const axios = require("axios");
+const fs = require("fs");
 const app = express();
+
+// ── fal.ai usage tracking ──
+const FAL_USAGE_FILE = path.join(__dirname, "../fal_usage.json");
+const FAL_DAILY_LIMIT = parseInt(process.env.FAL_DAILY_LIMIT) || 50;
+const FAL_MONTHLY_LIMIT = parseInt(process.env.FAL_MONTHLY_LIMIT) || 500;
+
+function getFalUsage() {
+  try {
+    return JSON.parse(fs.readFileSync(FAL_USAGE_FILE, "utf8"));
+  } catch {
+    return { dailyDate: "", dailyCount: 0, monthlyDate: "", monthlyCount: 0, totalCount: 0 };
+  }
+}
+
+function checkFalLimits() {
+  const usage = getFalUsage();
+  const today = new Date().toISOString().slice(0, 10);
+  const thisMonth = new Date().toISOString().slice(0, 7);
+
+  if (usage.dailyDate !== today) { usage.dailyDate = today; usage.dailyCount = 0; }
+  if (usage.monthlyDate !== thisMonth) { usage.monthlyDate = thisMonth; usage.monthlyCount = 0; }
+
+  if (usage.dailyCount >= FAL_DAILY_LIMIT) {
+    return { allowed: false, message: `Daily limit of ${FAL_DAILY_LIMIT} images reached. Resets at midnight UTC.`, usage };
+  }
+  if (usage.monthlyCount >= FAL_MONTHLY_LIMIT) {
+    return { allowed: false, message: `Monthly limit of ${FAL_MONTHLY_LIMIT} images reached.`, usage };
+  }
+  return { allowed: true, usage };
+}
+
+function recordFalUsage() {
+  const { usage } = checkFalLimits();
+  usage.dailyCount++;
+  usage.monthlyCount++;
+  usage.totalCount++;
+  fs.writeFileSync(FAL_USAGE_FILE, JSON.stringify(usage, null, 2));
+}
+
+async function generateImageWithFal(prompt) {
+  const limitCheck = checkFalLimits();
+  if (!limitCheck.allowed) {
+    const err = new Error(limitCheck.message);
+    err.statusCode = 429;
+    throw err;
+  }
+
+  const falKey = process.env.FAL_KEY;
+  if (!falKey) {
+    const err = new Error("FAL_KEY not configured");
+    err.statusCode = 503;
+    throw err;
+  }
+
+  // Submit to fal.ai queue
+  const submitRes = await axios.post(
+    "https://queue.fal.run/fal-ai/flux/schnell",
+    {
+      prompt: prompt,
+      num_inference_steps: 4,
+      image_size: "square",
+      num_images: 1,
+      output_format: "png",
+      enable_safety_checker: false,
+    },
+    {
+      headers: { "Authorization": "Key " + falKey, "Content-Type": "application/json" },
+      timeout: 15000,
+    }
+  );
+
+  const { status_url, response_url, request_id } = submitRes.data;
+  if (!status_url || !response_url) throw new Error("No URLs from fal.ai");
+
+  // Poll for result (max 30 seconds)
+  let result = null;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const statusRes = await axios.get(status_url, {
+      headers: { "Authorization": "Key " + falKey },
+      timeout: 5000,
+    });
+    const s = statusRes.data.status;
+    if (s === "COMPLETED") {
+      const resData = await axios.get(response_url, {
+        headers: { "Authorization": "Key " + falKey },
+        timeout: 15000,
+      });
+      result = resData.data;
+      break;
+    } else if (s === "FAILED") {
+      throw new Error("fal.ai generation failed: " + (statusRes.data.error || "unknown error"));
+    }
+  }
+
+  if (!result || !result.images || !result.images[0]) {
+    throw new Error("fal.ai returned no images");
+  }
+
+  recordFalUsage();
+  return result;
+}
 
 // Increase JSON payload limit to 50MB
 app.use(express.json({ limit: "50mb" }));
@@ -378,38 +481,43 @@ function setupRoutes() {
       }
     });
 
-    // Modify the image generation endpoint
+    // Image generation endpoint (uses fal.ai flux/schnell)
     app.post("/api/generate-image", async (req, res) => {
       if (!req.body || !req.body.prompt) {
-        return res.status(400).json({
-          error: "Missing prompt in request body",
-        });
+        return res.status(400).json({ error: "Missing prompt in request body" });
       }
 
       try {
         const { prompt } = req.body;
-        console.log("Generating image with prompt:", prompt);
+        console.log("Generating image via fal.ai with prompt:", prompt);
 
-        // Generate image with DALL-E
-        const ai = getOpenAI();
-            if (!ai) return res.status(503).json({ error: "OpenAI API key not configured" });
-            const response = await ai.images.generate({
-          prompt: prompt,
-          n: 1,
-          size: "256x256",
-          model: "dall-e-2",
-        });
-
-        // Download and convert the generated image
-        const imageUrl = response.data[0].url;
+        const result = await generateImageWithFal(prompt);
+        const imageUrl = result.images[0].url;
         const base64Image = await downloadAndConvertImage(imageUrl);
 
-        console.log("Image converted to base64");
+        console.log("Image generated via fal.ai, converted to base64");
         res.json({ imageUrl: base64Image });
       } catch (error) {
-        console.error("Error in image generation:", error);
-        res.status(500).json({ error: "Failed to generate image" });
+        const status = error.statusCode || 500;
+        console.error("Error in image generation:", error.message);
+        res.status(status).json({ error: error.message || "Failed to generate image" });
       }
+    });
+
+    // fal.ai usage status endpoint
+    app.get("/api/fal/usage", (req, res) => {
+      const usage = getFalUsage();
+      const today = new Date().toISOString().slice(0, 10);
+      const thisMonth = new Date().toISOString().slice(0, 7);
+      if (usage.dailyDate !== today) { usage.dailyCount = 0; }
+      if (usage.monthlyDate !== thisMonth) { usage.monthlyCount = 0; }
+      res.json({
+        daily: { count: usage.dailyCount, limit: FAL_DAILY_LIMIT },
+        monthly: { count: usage.monthlyCount, limit: FAL_MONTHLY_LIMIT },
+        total: usage.totalCount || 0,
+        remaining_daily: Math.max(0, FAL_DAILY_LIMIT - (usage.dailyCount || 0)),
+        remaining_monthly: Math.max(0, FAL_MONTHLY_LIMIT - (usage.monthlyCount || 0)),
+      });
     });
 
     // Add new endpoint to handle title updates

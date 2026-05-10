@@ -5,6 +5,7 @@ const { MongoClient, ObjectId } = require("mongodb");
 const dotenv = require("dotenv");
 const path = require("path");
 dotenv.config({ path: path.join(__dirname, "../.env") });
+  console.log("MONGO_URI from env:", process.env.MONGO_URI ? "SET" : "UNDEFINED");
 const bcrypt = require("bcrypt");
 const saltRounds = 10;
 const { OpenAI } = require("openai");
@@ -34,20 +35,32 @@ app.use(
 
 const port = process.env.VUE_APP_PORT || 8000; // Use environment variable or default to 5000
 
-const openai = new OpenAI({
-  apiKey: process.env.VUE_APP_OPENAI_API_KEY,
-});
+let _openai = null;
+function getOpenAI() {
+    if (!_openai) {
+        const key = process.env.VUE_APP_OPENAI_API_KEY;
+        if (!key) return null;
+        _openai = new OpenAI({ apiKey: key });
+    }
+    return _openai;
+}
 
 // Middleware
 app.use(bodyParser.json());
 app.use(cors());
 
+// Health check endpoint (always works)
+app.get("/api/health", (req, res) => {
+    res.json({ status: storiesCollection ? "connected" : "disconnected", timestamp: new Date().toISOString() });
+});
+
 // MongoDB Connection (replace with your actual connection string)
-const uri =
-  "mongodb+srv://<username>:<password>@<cluster-url>/?retryWrites=true&w=majority&appName=<app-name>";
+const uri = process.env.MONGO_URI || "mongodb+srv://<username>:<password>@<cluster-url>/?retryWrites=true\u0026w=majority\u0026appName=<app-name>";
 const client = new MongoClient(uri, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
+  tls: true,
+  tlsAllowInvalidCertificates: process.env.NODE_ENV === "development",
+  serverSelectionTimeoutMS: 5000,
+  connectTimeoutMS: 5000,
 });
 
 let storiesCollection;
@@ -68,22 +81,22 @@ async function connectToDatabase() {
 
     // Start server only after routes are setup
     // Start the server
-    app.listen(port, () => {
-      console.log(`Server listening on port ${port}`);
-
-      // Graceful shutdown
-      process.on("SIGINT", () => {
-        console.log("Shutting down server");
-
-        client.close();
-        process.exit();
-      });
-    });
   } catch (error) {
-    console.error("Failed to connect to MongoDB:", error);
-    process.exit(1);
+    console.error("Failed to connect to MongoDB:", error.message);
+    console.log("Server starting without database - some features unavailable");
+    setupRoutes();
   }
-}
+
+  // Start server regardless of database connection
+  app.listen(port, () => {
+    console.log(`Server listening on port ${port}`);
+    process.on("SIGINT", () => {
+      console.log("Shutting down server");
+      try { client.close(); } catch(e) {}
+      process.exit();
+    });
+  });
+  }
 
 // Move route setup to separate function
 function setupRoutes() {
@@ -95,6 +108,13 @@ function setupRoutes() {
         const stories = await storiesCollection.find({}).toArray();
         res.json(stories);
       } catch (error) {
+        if (!storiesCollection) {
+            const accept = req.headers.accept || "";
+            if (accept.includes("text/html")) {
+                return res.redirect("/storybook/maintenance.html");
+            }
+            return res.status(503).json({ error: "Database offline - please check /storybook/maintenance.html" });
+        }
         console.error("Error fetching stories:", error);
         res.status(500).json({ error: "Failed to fetch stories" });
       }
@@ -371,7 +391,9 @@ function setupRoutes() {
         console.log("Generating image with prompt:", prompt);
 
         // Generate image with DALL-E
-        const response = await openai.images.generate({
+        const ai = getOpenAI();
+            if (!ai) return res.status(503).json({ error: "OpenAI API key not configured" });
+            const response = await ai.images.generate({
           prompt: prompt,
           n: 1,
           size: "256x256",
@@ -402,7 +424,9 @@ function setupRoutes() {
         }
 
         // Generate new prompt for main node based on new title
-        const initialResponse = await openai.chat.completions.create({
+        const ai = getOpenAI();
+            if (!ai) return res.status(503).json({ error: "OpenAI API key not configured" });
+            const initialResponse = await ai.chat.completions.create({
           model: "gpt-3.5-turbo",
           messages: [
             {
@@ -450,8 +474,20 @@ function setupRoutes() {
 
     // Add more API endpoints as needed (e.g., for user progress, saving, image generation)
   } catch (error) {
-    console.error("Error connecting to MongoDB:", error);
+    console.error("Error setting up routes:", error);
   }
+
+  // Add catch-all error handler for API
+  app.use("/api", (err, req, res, next) => {
+    console.error("API Error:", err.message);
+    if (!storiesCollection) {
+      const accept = req.headers.accept || "";
+      if (accept.includes("text/html")) {
+        return res.redirect("/storybook/maintenance.html");
+      }
+    }
+    res.status(500).json({ error: "Internal server error" });
+  });
 }
 
 // Add helper function to download and convert image
@@ -486,7 +522,9 @@ async function generateChoices(prompt, storyId, nodeIndex) {
 
     console.log("Generating choices for story:", storyContext);
 
-    const response = await openai.chat.completions.create({
+    const ai = getOpenAI();
+                if (!ai) throw new Error("OpenAI not configured");
+                const response = await ai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         {

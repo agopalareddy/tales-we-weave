@@ -183,6 +183,13 @@ export default {
             lastNodeId: 0
           })
         })
+        if (storyRes.status === 401) {
+          auth.clearAuth()
+          toast.addToast('error', 'Please log in again')
+          this.step = 1
+          this.creating = false
+          return
+        }
         if (!storyRes.ok) throw new Error('Failed to create story')
         const storyData = await storyRes.json()
         const storyId = storyData.insertedId || storyData._id

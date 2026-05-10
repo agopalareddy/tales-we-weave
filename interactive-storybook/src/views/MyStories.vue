@@ -52,6 +52,11 @@ export default {
         const res = await fetch('/api/my-stories', {
           headers: { ...auth.authHeader }
         })
+        if (res.status === 401) {
+          auth.clearAuth()
+          this.$router.push('/login')
+          return
+        }
         if (!res.ok) throw new Error('Failed to fetch stories')
         this.stories = await res.json()
       } catch (e) {

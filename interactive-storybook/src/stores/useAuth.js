@@ -5,10 +5,42 @@ import router from '@/router'
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('storybook_token') || null)
   const user = ref(JSON.parse(localStorage.getItem('storybook_user') || 'null'))
+  const isValidating = ref(false)
 
-  const isLoggedIn = computed(() => !!token.value)
+  const isLoggedIn = computed(() => !!token.value && !!user.value)
   const username = computed(() => user.value?.username || '')
   const authHeader = computed(() => token.value ? { 'Authorization': 'Bearer ' + token.value } : {})
+
+  async function validateToken() {
+    if (!token.value) return false
+    isValidating.value = true
+    try {
+      const res = await fetch('/api/me', {
+        headers: { 'Authorization': 'Bearer ' + token.value }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        user.value = { _id: data._id, username: data.username }
+        localStorage.setItem('storybook_user', JSON.stringify({ _id: data._id, username: data.username }))
+        return true
+      } else {
+        clearAuth()
+        return false
+      }
+    } catch {
+      // Network error - keep existing auth, don't clear
+      return !!token.value
+    } finally {
+      isValidating.value = false
+    }
+  }
+
+  function clearAuth() {
+    token.value = null
+    user.value = null
+    localStorage.removeItem('storybook_token')
+    localStorage.removeItem('storybook_user')
+  }
 
   async function login(username, password) {
     const res = await fetch('/api/login', {
@@ -45,12 +77,14 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
-    token.value = null
-    user.value = null
-    localStorage.removeItem('storybook_token')
-    localStorage.removeItem('storybook_user')
+    clearAuth()
     router.push('/')
   }
 
-  return { token, user, isLoggedIn, username, authHeader, login, register, logout }
+  // Validate token on initial load (best-effort, don't block)
+  if (token.value) {
+    validateToken()
+  }
+
+  return { token, user, isLoggedIn, isValidating, username, authHeader, login, register, logout, validateToken, clearAuth }
 })

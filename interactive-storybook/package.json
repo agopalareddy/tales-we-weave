@@ -8,7 +8,7 @@
     "serve": "concurrently \"vue-cli-service serve\" \"node server/index.js\"",
     "build": "vue-cli-service build",
     "lint": "vue-cli-service lint",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vue-cli-service lint && echo \"✓ Lint passed\""
   },
   "main": "index.js",
   "dependencies": {

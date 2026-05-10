@@ -611,6 +611,27 @@ function setupRoutes() {
       }
     });
 
+    // Generate an opening prompt from a story title (uses Gemini)
+    app.post("/api/generate-prompt", async (req, res) => {
+      try {
+        const { title } = req.body;
+        if (!title || !title.trim()) {
+          return res.status(400).json({ error: "Title is required" });
+        }
+        const geminiText = await callGemini(
+          `Create an engaging opening scene for a story titled: "${title}". Generate exactly 3 distinct options. Return ONLY a JSON object with a "prompts" array containing 3 strings, each being a short opening scene (under 20 words).`,
+          "You are a creative writing assistant. Generate story opening scenes that are vivid and engaging. Always respond in JSON.",
+          0.9
+        );
+        const parsed = JSON.parse(geminiText);
+        const prompts = parsed.prompts || [geminiText.replace(/^["'\s]+|["'\s]+$/g, '').substring(0, 200)];
+        res.json({ prompts });
+      } catch (error) {
+        console.error("Error generating prompt:", error);
+        res.status(500).json({ error: "Failed to generate prompt" });
+      }
+    });
+
     // Add more API endpoints as needed (e.g., for user progress, saving, image generation)
   } catch (error) {
     console.error("Error setting up routes:", error);
@@ -668,19 +689,25 @@ async function generateChoices(prompt, storyId, nodeIndex) {
       console.log("Gemini response:", geminiText);
 
       const parsed = JSON.parse(geminiText);
-      if (!parsed.choices || !Array.isArray(parsed.choices) || parsed.choices.length !== 2) {
+      if (!parsed.choices || !Array.isArray(parsed.choices) || parsed.choices.length === 0) {
         console.log("Invalid response structure, using fallback");
         return [
-          { text: "Continue the journey carefully" },
-          { text: "Take a different path" },
+          { text: "Continue the journey carefully", nextNodeId: story.nodes.length },
+          { text: "Take a different path", nextNodeId: story.nodes.length + 1 },
         ];
       }
-      return parsed.choices;
+      // Assign nextNodeId sequentially based on current story node count
+      const nextBaseId = story.nodes.length;
+      const choices = parsed.choices.map((choice, idx) => ({
+        text: choice.text,
+        nextNodeId: nextBaseId + idx
+      }));
+      return choices;
     } catch (parseError) {
       console.error("Parse error:", parseError);
       return [
-        { text: "Continue the journey carefully" },
-        { text: "Take a different path" },
+        { text: "Continue the journey carefully", nextNodeId: story.nodes.length },
+        { text: "Take a different path", nextNodeId: story.nodes.length + 1 },
       ];
     }
   } catch (error) {

@@ -1,9 +1,9 @@
-
 const { MongoClient, ServerApiVersion } = require('mongodb');
 require('dotenv').config({path: "backend/config.env"});
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
-const client = new MongoClient(process.env.MONGO_URI, {
+let dbConnection = null;
+
+const client = new MongoClient(process.env.MONGO_URI || 'mongodb://localhost:27017', {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
@@ -11,16 +11,28 @@ const client = new MongoClient(process.env.MONGO_URI, {
   }
 });
 
-async function run() {
+async function connectToDatabase() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // Ensures that the client will close when you finish/error
-    await client.close();
+    dbConnection = client.db(process.env.MONGO_DB || 'storybook');
+    await dbConnection.command({ ping: 1 });
+    console.log("Connected to MongoDB");
+    return dbConnection;
+  } catch (error) {
+    console.error("Failed to connect to MongoDB:", error.message);
+    return null;
   }
 }
-run().catch(console.dir);
+
+function getDb() {
+  return dbConnection;
+}
+
+async function closeConnection() {
+  if (client) {
+    await client.close();
+    dbConnection = null;
+  }
+}
+
+module.exports = { connectToDatabase, getDb, closeConnection };

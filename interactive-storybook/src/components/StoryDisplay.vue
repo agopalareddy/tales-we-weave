@@ -15,7 +15,7 @@
         <div class="path-info" v-if="currentNodeData && currentNodeData.pathToRoot?.length">
             <span class="path-label">Path:</span>
             <span class="path-breadcrumbs">
-                <span v-for="(pid, pidx) in currentNodeData.pathToRoot" :key="pidx" class="crumb-link" @click="currentNode = pid">
+                <span v-for="(pid, pidx) in currentNodeData.pathToRoot" :key="pidx" class="crumb-link" @click="nodeNav(pid)">
                     Node {{ pid }}
                 </span>
                 <span class="crumb-current">Node {{ currentNode }}</span>
@@ -142,32 +142,63 @@ export default {
         currentNode: {
             async handler(newNode) {
                 if (this.story?.nodes) {
-                    // Safe access with optional chaining
                     if (!this.story.nodes[newNode]) {
                         await this.createNewNode(newNode);
                     } else if (!this.story.nodes[newNode].image) {
                         await this.generateAndSaveImage(newNode);
                     }
                 }
+                // Sync current node to URL for persistence across refreshes
+                const storyId = this.$route.params.id;
+                this.$router.replace({ path: '/story/' + storyId, query: { node: newNode } }).catch(() => {});
             },
             immediate: true
         }
     },
     methods: {
         async fetchStory() {
+            this.storyLoading = true;
+            this.storyError = null;
+            this.storyNotFound = false;
             try {
                 const storyId = this.$route.params.id;
                 const response = await fetch(`${this.apiBaseUrl}/api/stories/${storyId}`);
-                this.story = await response.json();
 
-                if (!this.story.nodes[this.currentNode]) {
-                    await this.createNewNode(this.currentNode);
-                } else if (!this.story.nodes[this.currentNode].image) {
-                    await this.generateAndSaveImage(this.currentNode);
+                if (response.status === 404) {
+                    this.storyNotFound = true;
+                    return;
+                }
+                if (!response.ok) {
+                    throw new Error('Failed to fetch story');
+                }
+
+                const data = await response.json();
+                if (!data) {
+                    this.storyNotFound = true;
+                    return;
+                }
+
+                this.story = data;
+
+                // Respect URL node param; fall back to 0
+                const nodeParam = parseInt(this.$route.query.node);
+                const startNode = (!isNaN(nodeParam) && nodeParam >= 0 && this.story.nodes[nodeParam]) ? nodeParam : 0;
+                this.currentNode = startNode;
+
+                // Only generate image for the first node if it's node 0 AND has no image
+                if (startNode === 0 && this.story.nodes && this.story.nodes[0] && !this.story.nodes[0].image) {
+                    await this.generateAndSaveImage(0).catch(e => console.error('Image gen failed:', e));
                 }
             } catch (error) {
                 console.error('Error fetching story:', error);
+                this.storyError = error.message || 'Failed to load story';
+            } finally {
+                this.storyLoading = false;
             }
+        },
+        nodeNav(nodeIndex) {
+            if (nodeIndex === undefined || nodeIndex < 0) return;
+            this.currentNode = nodeIndex;
         },
         toggleEditPrompt() {
             if (this.editingPrompt) {
@@ -314,6 +345,7 @@ export default {
                 if (!saveResponse.ok) throw new Error('Failed to save image');
 
                 // Update local state after server confirms
+                this.story.nodes[nodeIndex].image = data.imageUrl;
             } catch (error) {
                 console.error('Error:', error);
                 this.error = error.message;
@@ -321,36 +353,28 @@ export default {
                 this.loading = false;
             }
         },
-        async handleChoice(nextNodeId) {
+        async handleChoice(nodeIndex) {
             try {
                 if (this.loading) return;
                 this.loading = true;
 
-                const currentNode = this.story?.nodes[this.currentNode];
-                const choice = currentNode?.choices.find(choice => choice.nextNodeId === nextNodeId);
-                if (!choice) {
-                    throw new Error('Invalid choice selected');
+                if (nodeIndex === undefined || nodeIndex === null || nodeIndex < 0) {
+                    throw new Error('Invalid choice');
                 }
-                // if (!this.story.nodes[nextNodeId]) {
-                //     const existingNode = this.story.nodes.find(n => n?.nodeId === nextNodeId);
-                //     if (!existingNode) {
-                //         const newNode = await this.createNewNode(this.currentNode, choice.text);
-                //         if (newNode) {
-                //             this.story.nodes[nextNodeId] = newNode;
-                //         }
-                //     }
-                // }
-                if (!this.story.nodes[nextNodeId]) {
-                    await this.createNewNode(this.currentNode, choice.text);
-                    // Let the watcher handle image and choice generation
+
+                // Create the node at nodeIndex if it doesn't exist yet
+                if (!this.story.nodes[nodeIndex]) {
+                    const choice = this.story?.nodes[this.currentNode]?.choices?.find(c => c.nextNodeId === nodeIndex);
+                    await this.createNewNode(this.currentNode, choice ? choice.text : 'Continue...');
                 }
-                // Update current node only after successful creation/fetch
-                this.currentNode = nextNodeId;
+
+                // Release loading BEFORE setting currentNode so the watcher
+                // can call generateAndSaveImage without being blocked
                 this.loading = false;
+                this.currentNode = nodeIndex;
             } catch (error) {
                 console.error('Error handling choice:', error);
                 this.error = error.message;
-            } finally {
                 this.loading = false;
             }
 
@@ -500,22 +524,29 @@ export default {
     },
     mounted() {
         this.toast = useToast();
+        // Restore node position from URL query param
+        const nodeParam = parseInt(this.$route.query.node);
+        if (!isNaN(nodeParam) && nodeParam >= 0) {
+            this.currentNode = nodeParam;
+        }
         this.fetchStory();
     },
 };
 </script>
 
 <style scoped>
+.story-display { max-width: 800px; margin: 0 auto; padding: var(--space-lg); }
+
 .loading {
-    padding: 1rem;
-    color: #666;
+    padding: var(--space-md);
+    color: var(--text-muted);
     font-style: italic;
 }
 
 img {
     max-width: 100%;
     height: auto;
-    margin: 1rem 0;
+    margin: var(--space-md) 0;
 }
 
 .image-container {
@@ -525,13 +556,21 @@ img {
 
 .regenerate-btn {
     position: absolute;
-    top: 10px;
-    right: 10px;
-    padding: 8px 16px;
-    background: rgba(255, 255, 255, 0.9);
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    top: var(--space-sm);
+    right: var(--space-sm);
+    padding: var(--space-xs) var(--space-md);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     cursor: pointer;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.regenerate-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--accent);
 }
 
 .regenerate-btn:disabled {
@@ -540,37 +579,84 @@ img {
 }
 
 .story-title {
-    font-size: 1.5rem;
-    padding: 0.5rem;
-    margin: 1rem 0;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+    font-size: var(--text-xl);
+    padding: var(--space-sm);
+    margin: var(--space-md) 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     width: 80%;
     max-width: 600px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
 }
 
 .story-title:focus {
     outline: none;
-    border-color: #42b983;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .path-info {
-    font-size: 0.8em;
-    color: #666;
-    margin: 0.5rem 0;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin: var(--space-sm) 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.path-label {
+    font-weight: 600;
+}
+
+.path-breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.crumb-link {
+    color: var(--accent);
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.crumb-link:hover {
+    text-decoration: underline;
+}
+
+.crumb-current {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.depth-badge {
+    margin-left: auto;
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
 }
 
 .actions {
-    margin-top: 1rem;
+    margin-top: var(--space-md);
 }
 
 .delete-btn {
-    background-color: #ff4d4d;
-    color: white;
+    background-color: var(--danger);
+    color: var(--text-inverse);
     border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-sm);
     cursor: pointer;
+    font-weight: 600;
+    transition: background-color var(--transition-fast);
+}
+
+.delete-btn:hover {
+    background-color: var(--danger-hover);
 }
 
 .delete-modal {
@@ -579,113 +665,215 @@ img {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--bg-overlay);
     display: flex;
     justify-content: center;
     align-items: center;
+    z-index: var(--z-modal-backdrop);
 }
 
 .delete-modal-content {
-    background: white;
-    padding: 2rem;
-    border-radius: 4px;
+    background: var(--bg-card);
+    padding: var(--space-2xl);
+    border-radius: var(--radius-lg);
     text-align: center;
+    box-shadow: var(--shadow-xl);
+    max-width: 480px;
+    margin: var(--space-lg);
 }
 
 .delete-modal-actions {
-    margin-top: 1rem;
+    margin-top: var(--space-md);
 }
 
 .confirm-delete {
-    background-color: #ff4d4d;
-    color: white;
+    background-color: var(--danger);
+    color: var(--text-inverse);
     border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    margin-right: 1rem;
+    margin-right: var(--space-md);
+    font-weight: 600;
+}
+
+.confirm-delete:hover {
+    background-color: var(--danger-hover);
 }
 
 .cancel-delete {
-    background-color: #ccc;
-    color: black;
+    background-color: var(--border);
+    color: var(--text-primary);
     border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-sm);
     cursor: pointer;
+    font-weight: 600;
 }
 
-/* Add button styling */
+.cancel-delete:hover {
+    background-color: var(--border-strong);
+}
+
 .regenerate-btn {
-    margin-top: 1rem;
-    padding: 0.5rem 1rem;
-    background-color: #42b983;
-    color: white;
+    margin-top: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background-color: var(--accent);
+    color: var(--text-inverse);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     margin-left: auto;
     margin-right: auto;
-}
-
-.regenerate-btn:disabled {
-    background-color: #ccc;
-    cursor: not-allowed;
+    font-weight: 600;
+    transition: background-color var(--transition-fast);
 }
 
 .regenerate-btn:hover:not(:disabled) {
-    background-color: #3aa876;
+    background-color: var(--accent-hover);
+}
+
+.regenerate-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .regenerate-btn.disabled {
     opacity: 0.6;
     cursor: not-allowed;
-    background-color: #ccc;
+    background-color: var(--border);
 }
 
 .disabled-hint {
-    font-size: 0.8em;
-    color: #666;
-    margin-left: 0.5rem;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    margin-left: var(--space-xs);
 }
 
 .error-message {
-    color: #dc3545;
-    padding: 0.5rem;
-    margin: 0.5rem 0;
-    border-radius: 4px;
-    background-color: #f8d7da;
+    color: var(--danger);
+    padding: var(--space-sm) var(--space-md);
+    margin: var(--space-sm) 0;
+    border-radius: var(--radius-md);
+    background-color: var(--danger-soft);
+    border: 1px solid var(--danger);
 }
 
 .title-container {
     display: flex;
-    gap: 1rem;
+    gap: var(--space-md);
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-md);
+}
+
+.title-container input {
+    flex: 1;
+    padding: var(--space-sm) var(--space-md);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    transition: border-color var(--transition-fast);
+}
+
+.title-container input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .edited {
-    border-color: #42b983;
+    border-color: var(--accent);
 }
 
 .save-title-btn {
-    padding: 0.5rem 1rem;
-    background-color: #42b983;
-    color: white;
+    padding: var(--space-sm) var(--space-md);
+    background-color: var(--accent);
+    color: var(--text-inverse);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background-color var(--transition-fast);
 }
 
 .save-title-btn:disabled {
-    background-color: #ccc;
+    opacity: 0.55;
     cursor: not-allowed;
 }
 
 .save-title-btn:hover:not(:disabled) {
-    background-color: #3aa876;
+    background-color: var(--accent-hover);
+}
+
+.prompt-section {
+    margin-bottom: var(--space-lg);
+}
+
+.prompt-display {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+}
+
+.prompt-text {
+    flex: 1;
+    font-size: var(--text-md);
+    line-height: 1.6;
+    color: var(--text-primary);
+}
+
+.btn-edit-prompt {
+    padding: var(--space-xs) var(--space-sm);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.btn-edit-prompt:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.prompt-edit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.prompt-textarea {
+    width: 100%;
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: var(--text-md);
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 80px;
+    font-family: var(--font-sans);
+}
+
+.prompt-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.prompt-edit-actions {
+    display: flex;
+    gap: var(--space-sm);
+    justify-content: flex-end;
 }
 </style>

@@ -1,29 +1,43 @@
 <template>
-    <nav>
-        <router-link to="/">Back to Story List</router-link>
+    <nav class="nav-links">
+        <router-link to="/">← Back to Story List</router-link>
+        <router-link to="/my-stories" v-if="isLoggedIn">My Stories</router-link>
     </nav>
 </template>
 
 <script>
+import { useAuthStore } from '@/stores/useAuth.js';
+
 export default {
-    name: 'NavigationPage'
-}
+    name: 'NavigationLinks',
+    computed: {
+        isLoggedIn() {
+            try {
+                return useAuthStore().isLoggedIn;
+            } catch {
+                return false;
+            }
+        },
+    },
+};
 </script>
 
 <style scoped>
-nav {
-    padding: 1rem;
+.nav-links {
+    padding: var(--space-lg) 0;
     display: flex;
-    gap: 1rem;
+    gap: var(--space-lg);
 }
 
-router-link {
+.nav-links a {
     text-decoration: none;
-    color: #2c3e50;
-    font-weight: bold;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: var(--text-sm);
+    transition: color var(--transition-fast);
 }
 
-router-link:hover {
-    color: #42b983;
+.nav-links a:hover {
+    color: var(--accent);
 }
 </style>

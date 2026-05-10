@@ -29,24 +29,28 @@
       <CreateStoryCard :loading="creating" @create="createNewStory" />
       <StoryCard v-for="story in stories" :key="story._id" :story="story" />
     </div>
+    <CreateStoryDialog v-if="showCreateDialog" @close="showCreateDialog = false" @created="onStoryCreated" />
   </div>
 </template>
 
 <script>
 import StoryCard from './StoryCard.vue'
 import CreateStoryCard from './CreateStoryCard.vue'
+import CreateStoryDialog from './CreateStoryDialog.vue'
+import { useAuthStore } from '@/stores/useAuth.js'
 import { useToast } from '@/stores/useToast.js'
 
 export default {
   name: 'StoryList',
-  components: { StoryCard, CreateStoryCard },
+  components: { StoryCard, CreateStoryCard, CreateStoryDialog },
   data() {
     return {
       stories: [],
       apiBaseUrl: '',
       loading: true,
       error: null,
-      creating: false
+      creating: false,
+      showCreateDialog: false
     }
   },
   async mounted() {
@@ -68,26 +72,18 @@ export default {
         this.loading = false
       }
     },
-    async createNewStory() {
-      this.creating = true
-      try {
-        const res = await fetch(this.apiBaseUrl + '/api/stories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: 'New Story',
-            nodes: [{ prompt: 'Start your story here...', choices: [], image: '', nodeIndex: 0 }],
-            lastNodeId: 0
-          })
-        })
-        if (!res.ok) throw new Error('Failed to create story')
-        const result = await res.json()
-        this.$router.push('/story/' + result.insertedId)
-      } catch (e) {
-        this.toast.addToast('error', 'Failed to create story')
-      } finally {
-        this.creating = false
+    createNewStory() {
+      const auth = useAuthStore()
+      if (!auth.isLoggedIn) {
+        this.toast.addToast('error', 'Please login to create a story')
+        this.$router.push('/login')
+        return
       }
+      this.showCreateDialog = true
+    },
+    onStoryCreated(storyId) {
+      this.showCreateDialog = false
+      this.$router.push('/story/' + storyId)
     }
   }
 }

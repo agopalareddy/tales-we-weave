@@ -8,7 +8,7 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
   console.log("MONGO_URI from env:", process.env.MONGO_URI ? "SET" : "UNDEFINED");
 const bcrypt = require("bcrypt");
 const saltRounds = 10;
-const { OpenAI } = require("openai");
+const { callGemini } = require("./gemini");
 const axios = require("axios");
 const fs = require("fs");
 const crypto = require("crypto");
@@ -169,16 +169,6 @@ app.use(
 );
 
 const port = process.env.VUE_APP_PORT || 8000; // Use environment variable or default to 5000
-
-let _openai = null;
-function getOpenAI() {
-    if (!_openai) {
-        const key = process.env.VUE_APP_OPENAI_API_KEY;
-        if (!key) return null;
-        _openai = new OpenAI({ apiKey: key });
-    }
-    return _openai;
-}
 
 // Middleware
 app.use(bodyParser.json());
@@ -585,25 +575,13 @@ function setupRoutes() {
         }
 
         // Generate new prompt for main node based on new title
-        const ai = getOpenAI();
-            if (!ai) return res.status(503).json({ error: "OpenAI API key not configured" });
-            const initialResponse = await ai.chat.completions.create({
-          model: "gpt-3.5-turbo",
-          messages: [
-            {
-              role: "system",
-              content:
-                "Generate an engaging opening scene for a new story. Keep it brief but descriptive, setting up an interesting scenario. Response must be less than 15 words long.",
-            },
-            {
-              role: "user",
-              content: `Create an opening scene for a story titled: "${title}"`,
-            },
-          ],
-          temperature: 0.8,
-        });
-
-        const newPrompt = initialResponse.choices[0].message.content;
+        // Generate new prompt for main node based on new title
+          const geminiText = await callGemini(
+            `Create an engaging opening scene for a story titled: "${title}". Keep it brief but descriptive, setting up an interesting scenario. Must be less than 15 words long.`,
+            "You are a creative story prompt writer. Generate short engaging opening scenes.",
+            0.8
+          );
+          const newPrompt = geminiText.replace(/^["'\s]+|["'\s]+$/g, '').substring(0, 200);
 
         // Update both title and main node prompt
         const result = await storiesCollection.updateOne(
@@ -679,40 +657,18 @@ async function generateChoices(prompt, storyId, nodeIndex) {
     const currentNode = story.nodes[nodeIndex];
     if (!currentNode) throw new Error("Node not found");
 
-    let storyContext = `Title: ${story.title}\nCurrent Scene: ${currentNode.prompt}`;
-
+    const storyContext = `Title: ${story.title}\nCurrent Scene: ${currentNode.prompt}`;
     console.log("Generating choices for story:", storyContext);
 
-    const ai = getOpenAI();
-                if (!ai) throw new Error("OpenAI not configured");
-                const response = await ai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: `Generate two distinct story continuation options. Return ONLY a JSON object with an array property named "choices" containing exactly two objects with "text" properties. Example:
-  {"choices":[{"text":"first choice"},{"text":"second choice"}]}`,
-        },
-        {
-          role: "user",
-          content: `Given this story context: "${storyContext}", generate two possible continuations.`,
-        },
-      ],
-      temperature: 0.8,
-      response_format: { type: "json_object" },
-    });
-
-    const content = response.choices[0].message.content;
-    console.log("API response:", content);
+    const systemPrompt = "You are a creative story continuation writer. Generate two distinct story continuation options. Return ONLY a JSON object with an array property named 'choices' containing exactly two objects with 'text' properties. Example: {\"choices\":[{\"text\":\"first choice\"},{\"text\":\"second choice\"}]}";
+    const userPrompt = `Given this story context: "${storyContext}", generate two possible continuations.`;
 
     try {
-      const parsed = JSON.parse(content);
-      // Check for choices array
-      if (
-        !parsed.choices ||
-        !Array.isArray(parsed.choices) ||
-        parsed.choices.length !== 2
-      ) {
+      const geminiText = await callGemini(userPrompt, systemPrompt, 0.8);
+      console.log("Gemini response:", geminiText);
+
+      const parsed = JSON.parse(geminiText);
+      if (!parsed.choices || !Array.isArray(parsed.choices) || parsed.choices.length !== 2) {
         console.log("Invalid response structure, using fallback");
         return [
           { text: "Continue the journey carefully" },
@@ -721,7 +677,7 @@ async function generateChoices(prompt, storyId, nodeIndex) {
       }
       return parsed.choices;
     } catch (parseError) {
-      console.error("JSON parse error:", parseError);
+      console.error("Parse error:", parseError);
       return [
         { text: "Continue the journey carefully" },
         { text: "Take a different path" },

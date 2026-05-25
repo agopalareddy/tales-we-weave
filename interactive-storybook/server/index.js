@@ -744,17 +744,9 @@ async function downloadAndSaveImage(imageUrl, storyId, nodeIndex) {
 }
 
 // In server/index.js, add this new function:
-async function generateChoices(prompt, storyId, nodeIndex) {
+async function generateChoices(prompt, storyTitle, currentPrompt, nextBaseId) {
   try {
-    const id = new ObjectId(storyId);
-    const story = await storiesCollection.findOne({ _id: id });
-
-    if (!story) throw new Error("Story not found");
-
-    const currentNode = story.nodes[nodeIndex];
-    if (!currentNode) throw new Error("Node not found");
-
-    const storyContext = `Title: ${story.title}\nCurrent Scene: ${currentNode.prompt}`;
+    const storyContext = `Title: ${storyTitle}\nCurrent Scene: ${currentPrompt}`;
     console.log("Generating choices for story:", storyContext);
 
     const systemPrompt = "You are a creative story continuation writer. Generate two distinct story continuation options. Return ONLY a JSON object with an array property named 'choices' containing exactly two objects with 'text' properties. Example: {\"choices\":[{\"text\":\"first choice\"},{\"text\":\"second choice\"}]}";
@@ -768,12 +760,11 @@ async function generateChoices(prompt, storyId, nodeIndex) {
       if (!parsed.choices || !Array.isArray(parsed.choices) || parsed.choices.length === 0) {
         console.log("Invalid response structure, using fallback");
         return [
-          { text: "Continue the journey carefully", nextNodeId: story.nodes.length },
-          { text: "Take a different path", nextNodeId: story.nodes.length + 1 },
+          { text: "Continue the journey carefully", nextNodeId: nextBaseId },
+          { text: "Take a different path", nextNodeId: nextBaseId + 1 },
         ];
       }
-      // Assign nextNodeId sequentially based on current story node count
-      const nextBaseId = story.nodes.length;
+      // Assign nextNodeId sequentially from the computed base
       const choices = parsed.choices.map((choice, idx) => ({
         text: choice.text,
         nextNodeId: nextBaseId + idx
@@ -782,14 +773,44 @@ async function generateChoices(prompt, storyId, nodeIndex) {
     } catch (parseError) {
       console.error("Parse error:", parseError);
       return [
-        { text: "Continue the journey carefully", nextNodeId: story.nodes.length },
-        { text: "Take a different path", nextNodeId: story.nodes.length + 1 },
+        { text: "Continue the journey carefully", nextNodeId: nextBaseId },
+        { text: "Take a different path", nextNodeId: nextBaseId + 1 },
       ];
     }
   } catch (error) {
     console.error("Error generating choices:", error);
     throw error;
   }
+}
+
+// Utility to compute the next available nodeId, accounting for both
+// existing nodes and reserved nextNodeId values in choices
+function computeNextNodeId(story) {
+  let maxId = story.lastNodeId || 0;
+
+  // Scan all existing nodes
+  if (story.nodes) {
+    for (const node of story.nodes) {
+      if (node && node.nodeId !== undefined && node.nodeId !== null) {
+        maxId = Math.max(maxId, node.nodeId);
+      }
+    }
+  }
+
+  // Also scan all choice nextNodeId values to prevent overlap
+  if (story.nodes) {
+    for (const node of story.nodes) {
+      if (node && node.choices) {
+        for (const choice of node.choices) {
+          if (choice.nextNodeId !== undefined && choice.nextNodeId !== null) {
+            maxId = Math.max(maxId, choice.nextNodeId);
+          }
+        }
+      }
+    }
+  }
+
+  return maxId + 1;
 }
 
 // Utility to prune descendants from a story nodes sparse array
@@ -835,24 +856,23 @@ app.post("/api/stories/:id/node/:nodeIndex/choices", authenticateUser, async (re
       }
     }
 
-    // Then generate new choices
-    const choices = await generateChoices(prompt, id.toString(), nodeIndex);
+    // Compute nextBaseId from the PRUNED story state (NOT from a fresh DB fetch)
+    // This scans both nodes and choice nextNodeId values to prevent overlaps
+    const nextBaseId = computeNextNodeId(story);
+
+    // Then generate new choices using the correct nextBaseId
+    const choices = await generateChoices(prompt, story.title, currentNode.prompt, nextBaseId);
     story.nodes[nodeIndex].choices = choices;
 
-    // Update lastNodeId
-    let maxId = 0;
-    for (let i = 0; i < story.nodes.length; i++) {
-      if (story.nodes[i]) {
-        maxId = Math.max(maxId, story.nodes[i].nodeId);
-      }
-    }
+    // Update lastNodeId to reflect the max nodeId after new choice slots are reserved
+    const newMaxId = nextBaseId + choices.length - 1;
 
     const result = await storiesCollection.updateOne(
       { _id: id },
       {
         $set: {
           nodes: story.nodes,
-          lastNodeId: maxId
+          lastNodeId: newMaxId
         }
       }
     );
@@ -891,8 +911,9 @@ app.post("/api/stories/:id/node/:nodeIndex/choice", authenticateUser, async (req
       return res.status(404).json({ error: "Node not found" });
     }
 
-    // Assign nextNodeId sequentially based on length to be safe
-    const nextNodeId = story.nodes.length;
+    // Compute next available nodeId from the current story state,
+    // scanning both existing nodes and reserved choice nextNodeId values
+    const nextNodeId = computeNextNodeId(story);
     const newChoice = { text: text.trim(), nextNodeId };
 
     if (!currentNode.choices) {
@@ -991,20 +1012,15 @@ app.delete("/api/stories/:id/node/:nodeIndex/choice/:choiceIndex", authenticateU
       pruneDescendants(story, deletedChoice.nextNodeId);
     }
 
-    // Update lastNodeId
-    let maxId = 0;
-    for (let i = 0; i < story.nodes.length; i++) {
-      if (story.nodes[i]) {
-        maxId = Math.max(maxId, story.nodes[i].nodeId);
-      }
-    }
+    // Update lastNodeId — scan both nodes and choice nextNodeId values
+    const newMaxId = computeNextNodeId(story) - 1;
 
     const result = await storiesCollection.updateOne(
       { _id: id },
       {
         $set: {
           nodes: story.nodes,
-          lastNodeId: maxId
+          lastNodeId: newMaxId
         }
       }
     );

@@ -6,6 +6,7 @@
         <router-link to="/">Stories</router-link>
         <router-link v-if="auth.isLoggedIn" to="/my-stories">My Stories</router-link>
         <router-link v-if="auth.isLoggedIn" to="/profile">Profile</router-link>
+        <router-link to="/faq">FAQ</router-link>
         <router-link v-if="!auth.isLoggedIn" to="/login">Login</router-link>
         <router-link v-if="!auth.isLoggedIn" to="/register">Register</router-link>
         <span v-if="auth.isLoggedIn" class="user-info">

@@ -858,6 +858,9 @@ function setupRoutes() {
       } catch (error) {
         console.error("Error updating profile:", error);
         res.status(500).json({ error: "Failed to update profile" });
+      }
+    });
+
     // Delete current user account and all their authored stories/custom images
     app.delete("/api/users/me", authenticateUser, async (req, res) => {
       try {

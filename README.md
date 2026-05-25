@@ -1,59 +1,117 @@
-## 1. Quick Orientation (The "Above the Fold" Section)
+# Interactive Storybook 🚀 
 
-A user should be able to look at your repository and answer two questions within 5 seconds: *What does this do?* and *Is it relevant to my problem?*
+[![Course](https://img.shields.io/badge/WUSTL-CSE%20503S-blue.svg)](https://cse.wustl.edu/)
+[![Framework](https://img.shields.io/badge/Vue.js-3.x-emerald.svg)](https://vuejs.org/)
+[![Runtime](https://img.shields.io/badge/Node.js-%3E%3D%2018-green.svg)](https://nodejs.org/)
+[![Database](https://img.shields.io/badge/MongoDB-Atlas-success.svg)](https://www.mongodb.com/)
+[![AI-Powered](https://img.shields.io/badge/Gemini%20%7C%20fal.ai-Powered-blueviolet.svg)](https://deepmind.google/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-* **Clear Title & Tagline:** A self-explaining project name followed by a concise 1–3 sentence subtitle explaining the product type, primary stack, and key value proposition.
-* **Visual Proof (Demo/Screenshot):** A picture is worth a thousand words, especially on GitHub. An interactive GIF, screenshot, or terminal recording (using tools like Asciinema or ttygif) instantly demonstrates functionality.
-* **Status Badges:** Clean badges at the top (via Shields.io) to visually signal project metadata, such as build status, test coverage, package version, or license type.
-
-## 2. Low-Friction Getting Started Guide
-
-The quicker a user can experience your project locally, the more likely they are to adopt or contribute to it.
-
-* **Prerequisites:** Clearly list mandatory dependencies, minimal language version requirements (e.g., Node.js >= 18), or operating system limitations.
-* **Copy-Pasteable Installation:** Provide a crisp, step-by-step code block showing the absolute minimum steps needed to install it via your ecosystem's package manager.
-```bash
-git clone https://github.com/user/repo-name.git
-cd repo-name
-npm install
-```
-
-* **"Hello World" Usage Example:** Show a minimal, functional snippet of how to run the software or call the script, accompanied by the expected output. Save deep API configurations for comprehensive wiki pages.
-
-## 3. Structural Scannability & Maintenance
-
-Long, dense walls of prose cause users to leave your page out of frustration. Good structure respects the reader's time.
-
-* **Interactive Table of Contents:** For complex projects, a clear Table of Contents helps users skip directly to the section they need. *Note: GitHub natively autogenerates an Outline view via a menu icon on the file header, but a hardcoded markdown list is still a staple for long documents.*
-* **Clean Markdown Formatting:** Use headers (`##`, `###`) properly to establish hierarchy, and lean heavily on bulleted lists and standard code block syntax highlighting.
-* **Relative Paths for Assets:** If you link to local documentation files or host asset images directly in the repository, always use relative links (e.g., `./docs/CONTRIBUTING.md`) rather than absolute URLs. This ensures the links function seamlessly when users clone or fork your code locally.
-
-## 4. Administrative and Community Anchors
-
-If you want people to safely adopt or help scale your project, you must lay down the ground rules.
-
-* **Contribution Pipeline:** Explicitly state if you are open to pull requests. Instead of cluttering your README with git branching workflows, write a brief invite and link out to a dedicated `CONTRIBUTING.md` file.
-* **Explicit Licensing:** Always explicitly link your project's License (e.g., MIT, Apache 2.0). If a project lacks a license, many enterprise developers and open-source contributors cannot legally touch or evaluate your repository.
-* **Project Status / Support:** Clarify where users should go for help (e.g., GitHub Issues, Discord, or Discussions) and state the project's development state—whether it is actively maintained, stable, looking for co-maintainers, or archived.
+> A state-of-the-art AI-powered branching narrative game where readers create pathways using Gemini Flash choice logic and Fal.ai Flux Schnell graphics. Built with Vue 3, Express, and MongoDB.
 
 ---
 
-### Recommended Blueprint Structure
-
-# Project Title 🚀 [Badges here]
-> A brief, impactful tagline explaining what the project achieves.
-
-[Insert Screenshot/GIF/Demo link here]
-
 ## 📦 Features
-- Key selling point 1
-- Key selling point 2
+
+- **🌳 Interactive SVG Narrative Node Graph:** A custom-engineered, zoomable, and pannable visual representation of your story tree. Nodes glow to show your active path and color-code dynamically based on visited vs unexplored branches.
+- **🎨 AI Art Director Visual Styles:** Authors can expand a dedicated visual prompt panel to save styles (e.g. *Ghibli anime style, oil painting, volumetric lighting*) which seamlessly dictate fal.ai Schnell parameters to produce themed illustrations.
+- **💾 Reader Progress Bookmarking:** Registered users have their exact node location saved in the database automatically. Catalog stories feature "Resume" triggers that return readers to their exact bookmarked scene.
+- **🛠️ Intelligent Cascading Deletion:** Cleanly delete specific scenes and recursively purge disconnected descendant branches. Links in parents' choice arrays are broken, and custom cover/node uploads are unlinked from the local disk automatically to ensure maximum storage efficiency.
+- **🛡️ GDPR Account Purging:** Secure "Danger Zone" user dashboard panel that permanently deletes credentials, all authored stories, and recursively unlinks associated images from server disk.
+- **📊 Stats & Profile Dashboard:** Live metrics board displaying author stats (stories authored, nodes navigated, and illustrated scenes created) coupled with secure password updates.
+- **⚙️ Detailed AI Console Checklists:** Replaces basic spinners with terminal-style load checkers showing the active generation step (*Consulting Gemini AI...*, *Rendering pixels with Fal.ai Schnell...*, *Securing server file allocation...*).
+- **🔍 Catalog Search & Filtering:** Live catalog toolbar featuring real-time debounced searches, genre categorizations, and sorting triggers (Newest, Oldest, Alphabetical).
+
+---
 
 ## 🛠️ Installation & Requirements
-State minimal requirements, then provide copy-paste install commands.
+
+### Prerequisites
+* **Node.js** >= 18.x
+* **MongoDB** (Atlas cluster or local service running on port `27017`)
+* **Google Gemini API Key** (for choice/prompt logic)
+* **fal.ai Key** (for Flux Schnell artwork generation)
+
+### Copy-Pasteable Installation
+Clone the repository and install the standard dependencies:
+```bash
+# Clone the repository
+git clone https://github.com/agopalareddy/CSE503S_Interactive_Storybook.git
+cd CSE503S_Interactive_Storybook/interactive-storybook
+
+# Install dependencies
+npm install
+```
+
+### Environment Configuration
+Create a `.env` configuration file in `/interactive-storybook/` directory:
+```bash
+cp config.env.example .env
+```
+Fill in your credentials inside `.env`:
+```env
+MONGO_URI=your_mongodb_connection_string
+GOOGLE_API_KEY=your_gemini_api_key
+FAL_KEY=your_fal_ai_api_key
+VUE_APP_PORT=8000
+```
+
+---
 
 ## 🚀 Quick Start / Usage
-Provide the smallest runnable example possible.
+
+Start both the Express backend API and the Vue CLI development server concurrently using a single command:
+```bash
+npm run dev
+```
+
+The system will initialize:
+* **Backend API server** listening on port `8000` (establishing database connections)
+* **Vue CLI dev server** compiling assets and opening the browser on `http://localhost:8080/storybook/`
+
+---
+
+## 📁 Repository Structure
+
+```
+interactive-storybook/
+├── server/
+│   ├── index.js           # Core Express server & API endpoints (DB connection, JWT soft-auth)
+│   └── gemini.js          # Gemini Flash-lite integration prompt models
+├── src/
+│   ├── main.js            # Vue App initialization + Pinia registration + Router hooks
+│   ├── style.css          # Core design tokens system (light & dark custom properties)
+│   ├── App.vue            # Top navigation header & layout views router-view
+│   ├── router/
+│   │   └── index.js       # Global history routing configurations
+│   ├── utils/
+│   │   └── api.js         # Unified, auth-resilient apiFetch client wrapper
+│   ├── stores/
+│   │   ├── useAuth.js     # Pinia authenticated sessions store
+│   │   └── useToast.js    # Queue reactive toasts provider
+│   ├── components/
+│   │   ├── NodeGraph.vue  # Zoomable SVG bezier story tree canvas
+│   │   └── StoryDisplay.vue # Narrative viewer, prompts, editor, visual styles, deletion
+│   └── views/
+│       ├── FAQ.vue        # Accordion frequently asked questions dashboard
+│       ├── Profile.vue    # Dashboard stats cards, passwords, danger account deletion
+│       └── MyStories.vue  # Gated personal workspace stories list
+├── uploads/               # Disk storage directory for custom uploaded cover illustrations
+└── package.json           # Tasks compilation scripts and dependencies listing
+```
+
+---
 
 ## 🤝 Contributing & License
-Brief instructions or links to CONTRIBUTING.md / LICENSE.
+
+### Contributions
+This repository is primarily developed as part of **CSE 503S: Rapid Prototyping and Creative Programming** at Washington University in St. Louis. Pull requests and feature upgrades are welcome! Please open a GitHub Issue to outline your changes before making submissions.
+
+### License
+Distributed under the **MIT License**. See `LICENSE` for more information.
+
+---
+
+## 📬 Support & Status
+* **Project Status:** Production Ready / Active
+* **Support Channel:** Open a [GitHub Issue](https://github.com/agopalareddy/CSE503S_Interactive_Storybook/issues) for any bug reports or visual enhancement requests.

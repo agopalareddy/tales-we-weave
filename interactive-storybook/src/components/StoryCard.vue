@@ -9,7 +9,8 @@
     <div class="card-body">
       <h3 class="card-title">{{ story.title || 'Untitled' }}</h3>
       <div class="card-meta">
-        <span class="badge">Adventure</span>
+        <span v-if="story.isPublished === false" class="badge badge-draft">Draft</span>
+        <span v-else class="badge badge-published">Published</span>
         <span class="text-muted text-sm">{{ formatDate(story.createdAt) }}</span>
       </div>
     </div>
@@ -43,5 +44,7 @@ export default {
 .card-body { padding: var(--space-md) var(--space-lg); }
 .card-title { font-size: var(--text-base); margin-bottom: var(--space-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
-.badge { font-size: var(--text-xs); padding: 0.15rem 0.5rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.badge { font-size: var(--text-xs); padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600; }
+.badge-published { background: var(--accent-soft); color: var(--accent); }
+.badge-draft { background: var(--bg-hover); color: var(--text-muted); border: 1px solid var(--border); }
 </style>

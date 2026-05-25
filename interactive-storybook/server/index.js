@@ -6,7 +6,7 @@ const dotenv = require("dotenv");
 const path = require("path");
 dotenv.config({ path: path.join(__dirname, "../.env") });
   console.log("MONGO_URI from env:", process.env.MONGO_URI ? "SET" : "UNDEFINED");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const saltRounds = 10;
 const { callGemini } = require("./gemini");
 const axios = require("axios");
@@ -173,6 +173,7 @@ const port = process.env.VUE_APP_PORT || 8000; // Use environment variable or de
 // Middleware
 app.use(bodyParser.json());
 app.use(cors());
+app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Health check endpoint (always works)
 app.get("/api/health", (req, res) => {
@@ -230,7 +231,7 @@ function setupRoutes() {
     // Get all stories
     app.get("/api/stories", async (req, res) => {
       try {
-        const stories = await storiesCollection.find({}).toArray();
+        const stories = await storiesCollection.find({ isPublished: { $ne: false } }).toArray();
         res.json(stories);
       } catch (error) {
         if (!storiesCollection) {
@@ -271,6 +272,7 @@ function setupRoutes() {
         const story = {
           ...req.body,
           userId: req.user._id.toString(),
+          isPublished: false,
           createdAt: new Date(),
           updatedAt: new Date(),
           nodes: [
@@ -293,8 +295,16 @@ function setupRoutes() {
       }
     });
     // Update a story
-    app.put("/api/stories/:id", async (req, res) => {
+    app.put("/api/stories/:id", authenticateUser, async (req, res) => {
       try {
+        const id = new ObjectId(req.params.id);
+        const story = await storiesCollection.findOne({ _id: id });
+        if (!story) {
+          return res.status(404).json({ error: "Story not found" });
+        }
+        if (story.userId !== req.user._id.toString()) {
+          return res.status(403).json({ error: "You are not authorized to update this story" });
+        }
         const { title, nodes } = req.body;
 
         // Validate required fields
@@ -316,7 +326,6 @@ function setupRoutes() {
           }
         }
 
-        const id = new ObjectId(req.params.id);
         const updatedStory = req.body;
 
         delete updatedStory._id;
@@ -345,10 +354,45 @@ function setupRoutes() {
         res.status(500).json({ error: "Failed to update story" });
       }
     });
-    // Delete a story
-    app.delete("/api/stories/:id", async (req, res) => {
+
+    // Toggle publish status of a story
+    app.put("/api/stories/:id/publish", authenticateUser, async (req, res) => {
       try {
         const id = new ObjectId(req.params.id);
+        const story = await storiesCollection.findOne({ _id: id });
+        if (!story) {
+          return res.status(404).json({ error: "Story not found" });
+        }
+        if (story.userId !== req.user._id.toString()) {
+          return res.status(403).json({ error: "You are not authorized to update this story" });
+        }
+
+        // Toggle published status
+        const isPublished = story.isPublished === true ? false : true;
+
+        const result = await storiesCollection.updateOne(
+          { _id: id },
+          { $set: { isPublished, updatedAt: new Date() } }
+        );
+
+        res.json({ success: true, isPublished });
+      } catch (error) {
+        console.error("Error toggling publish status:", error);
+        res.status(500).json({ error: "Failed to toggle publish status" });
+      }
+    });
+
+    // Delete a story
+    app.delete("/api/stories/:id", authenticateUser, async (req, res) => {
+      try {
+        const id = new ObjectId(req.params.id);
+        const story = await storiesCollection.findOne({ _id: id });
+        if (!story) {
+          return res.status(404).json({ error: "Story not found" });
+        }
+        if (story.userId !== req.user._id.toString()) {
+          return res.status(403).json({ error: "You are not authorized to delete this story" });
+        }
         const result = await storiesCollection.deleteOne({ _id: id });
         res.json(result);
       } catch (error) {
@@ -358,9 +402,16 @@ function setupRoutes() {
     });
     // Update image for a specific node in a story
     app.options("/api/stories/:id/node/:nodeIndex/image", cors()); // Handle preflight
-    app.put("/api/stories/:id/node/:nodeIndex/image", async (req, res) => {
+    app.put("/api/stories/:id/node/:nodeIndex/image", authenticateUser, async (req, res) => {
       try {
         const id = new ObjectId(req.params.id);
+        const story = await storiesCollection.findOne({ _id: id });
+        if (!story) {
+          return res.status(404).json({ error: "Story not found" });
+        }
+        if (story.userId !== req.user._id.toString()) {
+          return res.status(403).json({ error: "You are not authorized to update this story's nodes" });
+        }
         const nodeIndex = parseInt(req.params.nodeIndex);
         const { image } = req.body;
 
@@ -381,17 +432,18 @@ function setupRoutes() {
       }
     });
     // Create or update a node in a story
-    app.put("/api/stories/:id/node/:nodeIndex", async (req, res) => {
+    app.put("/api/stories/:id/node/:nodeIndex", authenticateUser, async (req, res) => {
       try {
         const id = new ObjectId(req.params.id);
-        const nodeIndex = parseInt(req.params.nodeIndex);
-        const nodeData = req.body;
-
-        // First get the story to check current nodes array
         const story = await storiesCollection.findOne({ _id: id });
         if (!story) {
           return res.status(404).json({ error: "Story not found" });
         }
+        if (story.userId !== req.user._id.toString()) {
+          return res.status(403).json({ error: "You are not authorized to update this story's nodes" });
+        }
+        const nodeIndex = parseInt(req.params.nodeIndex);
+        const nodeData = req.body;
 
         // Ensure nodes array exists and has enough elements
         if (!story.nodes) {
@@ -420,16 +472,17 @@ function setupRoutes() {
       }
     });
     // Create a new node in a story
-    app.put("/api/stories/:id/node", async (req, res) => {
+    app.put("/api/stories/:id/node", authenticateUser, async (req, res) => {
       try {
         const id = new ObjectId(req.params.id);
-        const nodeData = req.body;
-
-        // Get current story to determine new node ID and parent info
         const story = await storiesCollection.findOne({ _id: id });
         if (!story) {
           return res.status(404).json({ error: "Story not found" });
         }
+        if (story.userId !== req.user._id.toString()) {
+          return res.status(403).json({ error: "You are not authorized to update this story's nodes" });
+        }
+        const nodeData = req.body;
 
         // Validate nodeIndex
         if (nodeData.nodeIndex === undefined || nodeData.nodeIndex < 0) {
@@ -541,15 +594,15 @@ function setupRoutes() {
       }
 
       try {
-        const { prompt } = req.body;
+        const { prompt, storyId, nodeIndex } = req.body;
         console.log("Generating image via fal.ai with prompt:", prompt);
 
         const result = await generateImageWithFal(prompt);
         const imageUrl = result.images[0].url;
-        const base64Image = await downloadAndConvertImage(imageUrl);
+        const relativeUrl = await downloadAndSaveImage(imageUrl, storyId, nodeIndex);
 
-        console.log("Image generated via fal.ai, converted to base64");
-        res.json({ imageUrl: base64Image });
+        console.log("Image generated via fal.ai, saved locally at:", relativeUrl);
+        res.json({ imageUrl: relativeUrl });
       } catch (error) {
         const status = error.statusCode || 500;
         console.error("Error in image generation:", error.message);
@@ -574,7 +627,7 @@ function setupRoutes() {
     });
 
     // Add new endpoint to handle title updates
-    app.put("/api/stories/:id/title", async (req, res) => {
+    app.put("/api/stories/:id/title", authenticateUser, async (req, res) => {
       try {
         const id = new ObjectId(req.params.id);
         const { title } = req.body;
@@ -583,7 +636,9 @@ function setupRoutes() {
         if (!story) {
           return res.status(404).json({ error: "Story not found" });
         }
-
+        if (story.userId !== req.user._id.toString()) {
+          return res.status(403).json({ error: "You are not authorized to update this story's title" });
+        }
         // Generate new prompt for main node based on new title
         // Generate new prompt for main node based on new title
           const geminiText = await callGemini(
@@ -660,19 +715,30 @@ function setupRoutes() {
   });
 }
 
-// Add helper function to download and convert image
-async function downloadAndConvertImage(imageUrl) {
+// Add helper function to download and save image locally
+async function downloadAndSaveImage(imageUrl, storyId, nodeIndex) {
   try {
     // Download image
     const response = await axios.get(imageUrl, {
       responseType: "arraybuffer",
     });
 
-    // Convert to base64
-    const base64Image = Buffer.from(response.data, "binary").toString("base64");
-    return `data:image/png;base64,${base64Image}`;
+    const uploadsDir = path.join(__dirname, "../uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const sId = storyId || "temp";
+    const nIdx = nodeIndex !== undefined ? nodeIndex : "unknown";
+    const filename = `story_${sId}_node_${nIdx}_${Date.now()}.png`;
+    const filePath = path.join(uploadsDir, filename);
+
+    fs.writeFileSync(filePath, response.data);
+    
+    // Return relative URL
+    return `/api/uploads/${filename}`;
   } catch (error) {
-    console.error("Error downloading/converting image:", error);
+    console.error("Error downloading/saving image:", error);
     throw error;
   }
 }
@@ -726,40 +792,72 @@ async function generateChoices(prompt, storyId, nodeIndex) {
   }
 }
 
-// Update the choices generation endpoint to handle regeneration
-app.post("/api/stories/:id/node/:nodeIndex/choices", async (req, res) => {
+// Utility to prune descendants from a story nodes sparse array
+function pruneDescendants(story, nodeIdToPrune) {
+  if (!story.nodes || !Array.isArray(story.nodes)) return;
+  for (let i = 0; i < story.nodes.length; i++) {
+    const node = story.nodes[i];
+    if (node) {
+      const isTarget = node.nodeId === nodeIdToPrune;
+      const isDescendant = node.pathToRoot && Array.isArray(node.pathToRoot) && node.pathToRoot.includes(nodeIdToPrune);
+      if (isTarget || isDescendant) {
+        story.nodes[i] = null;
+      }
+    }
+  }
+}
+
+// Update the choices generation endpoint to handle smart choice regeneration
+app.post("/api/stories/:id/node/:nodeIndex/choices", authenticateUser, async (req, res) => {
   try {
     const id = new ObjectId(req.params.id);
-    const nodeIndex = parseInt(req.params.nodeIndex);
-    const { prompt } = req.body;
-
     const story = await storiesCollection.findOne({ _id: id });
     if (!story) {
       return res.status(404).json({ error: "Story not found" });
     }
+    if (story.userId !== req.user._id.toString()) {
+      return res.status(403).json({ error: "You are not authorized to regenerate choices for this story" });
+    }
+    const nodeIndex = parseInt(req.params.nodeIndex);
+    const { prompt } = req.body;
 
     const currentNode = story.nodes[nodeIndex];
     if (!currentNode) {
       return res.status(404).json({ error: "Node not found" });
     }
 
-    // First, clean up child nodes by filtering out nodes after the current index
-    const updatedNodes = story.nodes.slice(0, nodeIndex + 1);
-    await storiesCollection.updateOne(
-      { _id: id },
-      { $set: { nodes: updatedNodes } }
-    );
+    // Prune only descendant nodes of the choices we are about to regenerate
+    if (currentNode.choices && Array.isArray(currentNode.choices)) {
+      for (const choice of currentNode.choices) {
+        if (choice.nextNodeId !== undefined && choice.nextNodeId !== null) {
+          pruneDescendants(story, choice.nextNodeId);
+        }
+      }
+    }
 
     // Then generate new choices
     const choices = await generateChoices(prompt, id.toString(), nodeIndex);
+    story.nodes[nodeIndex].choices = choices;
 
-    // Update the choices for the specific node
+    // Update lastNodeId
+    let maxId = 0;
+    for (let i = 0; i < story.nodes.length; i++) {
+      if (story.nodes[i]) {
+        maxId = Math.max(maxId, story.nodes[i].nodeId);
+      }
+    }
+
     const result = await storiesCollection.updateOne(
       { _id: id },
-      { $set: { [`nodes.${nodeIndex}.choices`]: choices } }
+      {
+        $set: {
+          nodes: story.nodes,
+          lastNodeId: maxId
+        }
+      }
     );
 
-    if (result.modifiedCount === 0) {
+    if (result.matchedCount === 0) {
       return res.status(404).json({ error: "Failed to update node choices" });
     }
 
@@ -767,6 +865,154 @@ app.post("/api/stories/:id/node/:nodeIndex/choices", async (req, res) => {
   } catch (error) {
     console.error("Error regenerating choices:", error);
     res.status(500).json({ error: "Failed to regenerate choices" });
+  }
+});
+
+// Add manual choice to a story node
+app.post("/api/stories/:id/node/:nodeIndex/choice", authenticateUser, async (req, res) => {
+  try {
+    const id = new ObjectId(req.params.id);
+    const story = await storiesCollection.findOne({ _id: id });
+    if (!story) {
+      return res.status(404).json({ error: "Story not found" });
+    }
+    if (story.userId !== req.user._id.toString()) {
+      return res.status(403).json({ error: "You are not authorized to edit this story" });
+    }
+    const nodeIndex = parseInt(req.params.nodeIndex);
+    const { text } = req.body;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: "Choice text is required" });
+    }
+
+    const currentNode = story.nodes[nodeIndex];
+    if (!currentNode) {
+      return res.status(404).json({ error: "Node not found" });
+    }
+
+    // Assign nextNodeId sequentially based on length to be safe
+    const nextNodeId = story.nodes.length;
+    const newChoice = { text: text.trim(), nextNodeId };
+
+    if (!currentNode.choices) {
+      currentNode.choices = [];
+    }
+    currentNode.choices.push(newChoice);
+
+    // Pad story nodes and set the future node spot to null
+    while (story.nodes.length <= nextNodeId) {
+      story.nodes.push(null);
+    }
+
+    const result = await storiesCollection.updateOne(
+      { _id: id },
+      {
+        $set: {
+          nodes: story.nodes,
+          lastNodeId: nextNodeId
+        }
+      }
+    );
+
+    res.json({ success: true, choice: newChoice, nodes: story.nodes });
+  } catch (error) {
+    console.error("Error adding choice:", error);
+    res.status(500).json({ error: "Failed to add choice" });
+  }
+});
+
+// Edit choice text
+app.put("/api/stories/:id/node/:nodeIndex/choice/:choiceIndex", authenticateUser, async (req, res) => {
+  try {
+    const id = new ObjectId(req.params.id);
+    const story = await storiesCollection.findOne({ _id: id });
+    if (!story) {
+      return res.status(404).json({ error: "Story not found" });
+    }
+    if (story.userId !== req.user._id.toString()) {
+      return res.status(403).json({ error: "You are not authorized to edit this story" });
+    }
+    const nodeIndex = parseInt(req.params.nodeIndex);
+    const choiceIndex = parseInt(req.params.choiceIndex);
+    const { text } = req.body;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: "Choice text is required" });
+    }
+
+    const currentNode = story.nodes[nodeIndex];
+    if (!currentNode || !currentNode.choices || !currentNode.choices[choiceIndex]) {
+      return res.status(404).json({ error: "Node or choice not found" });
+    }
+
+    currentNode.choices[choiceIndex].text = text.trim();
+
+    const result = await storiesCollection.updateOne(
+      { _id: id },
+      {
+        $set: {
+          [`nodes.${nodeIndex}.choices`]: currentNode.choices
+        }
+      }
+    );
+
+    res.json({ success: true, choices: currentNode.choices });
+  } catch (error) {
+    console.error("Error editing choice:", error);
+    res.status(500).json({ error: "Failed to edit choice" });
+  }
+});
+
+// Delete choice and prune its branch
+app.delete("/api/stories/:id/node/:nodeIndex/choice/:choiceIndex", authenticateUser, async (req, res) => {
+  try {
+    const id = new ObjectId(req.params.id);
+    const story = await storiesCollection.findOne({ _id: id });
+    if (!story) {
+      return res.status(404).json({ error: "Story not found" });
+    }
+    if (story.userId !== req.user._id.toString()) {
+      return res.status(403).json({ error: "You are not authorized to edit this story" });
+    }
+    const nodeIndex = parseInt(req.params.nodeIndex);
+    const choiceIndex = parseInt(req.params.choiceIndex);
+
+    const currentNode = story.nodes[nodeIndex];
+    if (!currentNode || !currentNode.choices || !currentNode.choices[choiceIndex]) {
+      return res.status(404).json({ error: "Node or choice not found" });
+    }
+
+    const deletedChoice = currentNode.choices[choiceIndex];
+    currentNode.choices.splice(choiceIndex, 1);
+
+    // Smart prune descendants of the deleted choice
+    if (deletedChoice.nextNodeId !== undefined && deletedChoice.nextNodeId !== null) {
+      pruneDescendants(story, deletedChoice.nextNodeId);
+    }
+
+    // Update lastNodeId
+    let maxId = 0;
+    for (let i = 0; i < story.nodes.length; i++) {
+      if (story.nodes[i]) {
+        maxId = Math.max(maxId, story.nodes[i].nodeId);
+      }
+    }
+
+    const result = await storiesCollection.updateOne(
+      { _id: id },
+      {
+        $set: {
+          nodes: story.nodes,
+          lastNodeId: maxId
+        }
+      }
+    );
+
+    res.json({ success: true, nodes: story.nodes });
+  } catch (error) {
+    console.error("Error deleting choice:", error);
+    res.status(500).json({ error: "Failed to delete choice" });
   }
 });
 

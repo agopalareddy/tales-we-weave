@@ -199,7 +199,11 @@ export default {
         const imgRes = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt })
+          body: JSON.stringify({
+            prompt,
+            storyId: storyId,
+            nodeIndex: 0
+          })
         })
         if (imgRes.ok) {
           const imgData = await imgRes.json()

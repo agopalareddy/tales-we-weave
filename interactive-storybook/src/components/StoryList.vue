@@ -1,7 +1,7 @@
 <template>
   <div class="story-list">
     <div class="list-header">
-      <h1>My Stories</h1>
+      <h1>Explore Stories</h1>
       <p class="text-muted">Choose a story to continue your adventure</p>
     </div>
 

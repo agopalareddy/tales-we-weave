@@ -59,7 +59,9 @@
             </div>
 
             <div class="title-row">
+                <h1 v-if="!isOwner" class="story-title-static">{{ story.title }}</h1>
                 <input
+                    v-else
                     v-model="story.title"
                     @input="handleTitleChange"
                     :class="{ 'edited': titleChanged }"
@@ -67,15 +69,25 @@
                     aria-label="Story title"
                     placeholder="Story title"
                 >
-                <button v-if="titleChanged" @click="saveTitle" class="btn btn-primary btn-sm" :disabled="!story.title.trim()">
+                <button v-if="isOwner && titleChanged" @click="saveTitle" class="btn btn-primary btn-sm" :disabled="!story.title.trim()">
                     Save
+                </button>
+            </div>
+
+            <!-- Publish Control Row -->
+            <div v-if="isOwner" class="publish-control-row">
+                <span class="badge" :class="story.isPublished ? 'badge-published' : 'badge-draft'">
+                    {{ story.isPublished ? 'Published' : 'Draft' }}
+                </span>
+                <button @click="togglePublishStatus" class="btn btn-sm btn-ghost" :disabled="publishing">
+                    {{ story.isPublished ? 'Revert to Draft' : 'Publish Story' }}
                 </button>
             </div>
 
             <div class="prompt-section">
                 <div v-if="!editingPrompt" class="prompt-display">
                     <p class="prompt-text">{{ story.nodes[currentNode]?.prompt || 'Loading node...' }}</p>
-                    <button @click="toggleEditPrompt" class="btn-edit-prompt" title="Edit prompt">✎</button>
+                    <button v-if="isOwner" @click="toggleEditPrompt" class="btn-edit-prompt" title="Edit prompt">✎</button>
                 </div>
                 <div v-else class="prompt-edit">
                     <textarea v-model="editPromptBuffer" class="prompt-textarea" rows="3"></textarea>
@@ -90,7 +102,7 @@
 
             <div v-if="story.nodes[currentNode]?.image" class="image-wrapper">
                 <img :src="story.nodes[currentNode].image" alt="Story illustration">
-                <button @click="regenerateImage" :disabled="loading" class="img-regen-btn" title="Regenerate image">
+                <button v-if="isOwner" @click="regenerateImage" :disabled="loading" class="img-regen-btn" title="Regenerate image">
                     🔄
                 </button>
             </div>
@@ -98,29 +110,69 @@
             <div v-if="error" class="error-message">{{ error }}</div>
 
             <div class="choices-section">
-                <ChoiceButton
-                    v-for="(choice, index) in story.nodes[currentNode]?.choices"
-                    :key="index"
-                    @click="handleChoice(choice.nextNodeId)"
-                >
-                    {{ choice.text }}
-                </ChoiceButton>
-                <button
-                    v-if="story.nodes[currentNode]?.choices?.length"
-                    @click="regenerateChoices"
-                    :disabled="isNewStory"
-                    :title="regenerateButtonTitle"
-                    class="choice-regen-btn"
-                    :class="{ 'disabled': isNewStory }"
-                >
-                    🔄 Regenerate Choices
-                    <span v-if="isNewStory" class="disabled-hint">(update title first)</span>
-                </button>
+                <!-- Editable choice rows if owner in editing mode -->
+                <div v-if="isOwner && choiceEditingMode" class="choices-list-editor">
+                    <div v-for="(choice, index) in story.nodes[currentNode]?.choices" :key="index" class="choice-edit-row">
+                        <input 
+                            v-model="choice.text" 
+                            class="choice-edit-input"
+                            @change="saveChoiceText(index, choice.text)"
+                            placeholder="Choice text..."
+                            aria-label="Edit choice text"
+                        />
+                        <button class="btn-icon btn-danger" @click="deleteChoice(index)" title="Delete choice and prune branch">
+                            🗑️
+                        </button>
+                    </div>
+                    
+                    <!-- Add Custom Choice Row -->
+                    <div class="choice-add-row">
+                        <input 
+                            v-model="newChoiceText" 
+                            class="choice-add-input" 
+                            placeholder="Add your own custom choice..."
+                            @keyup.enter="addCustomChoice"
+                            aria-label="Add custom choice text"
+                        />
+                        <button class="btn btn-primary btn-sm" @click="addCustomChoice" :disabled="!newChoiceText.trim()">
+                            ➕ Add
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Standard choice links if not in editing mode -->
+                <div v-else class="choices-display-list">
+                    <ChoiceButton
+                        v-for="(choice, index) in story.nodes[currentNode]?.choices"
+                        :key="index"
+                        @click="handleChoice(choice.nextNodeId)"
+                    >
+                        {{ choice.text }}
+                    </ChoiceButton>
+                </div>
+
+                <!-- Owner choice management options -->
+                <div v-if="isOwner" class="choices-editor-actions">
+                    <button @click="choiceEditingMode = !choiceEditingMode" class="btn btn-sm" :class="choiceEditingMode ? 'btn-secondary' : 'btn-ghost'">
+                        {{ choiceEditingMode ? '✓ Done Editing' : '🛠️ Edit Choices' }}
+                    </button>
+                    <button
+                        v-if="!choiceEditingMode && story.nodes[currentNode]?.choices?.length"
+                        @click="regenerateChoices"
+                        :disabled="isNewStory"
+                        :title="regenerateButtonTitle"
+                        class="choice-regen-btn"
+                        :class="{ 'disabled': isNewStory }"
+                    >
+                        🔄 Regenerate Choices
+                        <span v-if="isNewStory" class="disabled-hint">(update title first)</span>
+                    </button>
+                </div>
             </div>
 
             <NavigationLinks />
 
-            <button @click="confirmDelete" class="delete-btn">Delete Story</button>
+            <button v-if="isOwner" @click="confirmDelete" class="delete-btn">Delete Story</button>
         </div>
 
         <!-- Delete confirmation modal -->
@@ -139,6 +191,7 @@
 
 <script>
 import { useToast } from '@/stores/useToast.js'
+import { useAuthStore } from '@/stores/useAuth.js'
 import ChoiceButton from './ChoiceButton.vue';
 import NavigationLinks from './NavigationLinks.vue';
 
@@ -167,11 +220,18 @@ export default {
             editPromptBuffer: '',
             showTree: false,
             visitedNodes: new Set(),
+            choiceEditingMode: false,
+            newChoiceText: '',
+            publishing: false,
         };
     },
     computed: {
         currentNodeData() {
             return this.story?.nodes[this.currentNode];
+        },
+        isOwner() {
+            const auth = useAuthStore();
+            return auth.isLoggedIn && this.story && this.story.userId === auth.user?._id;
         },
         isNewStory() {
             return this.story?.title === "New Story";
@@ -295,9 +355,13 @@ export default {
             const nodeIndex = this.currentNode;
             
             try {
+                const auth = useAuthStore();
                 const res = await fetch(`${this.apiBaseUrl}/api/stories/${storyId}/node/${nodeIndex}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        ...auth.authHeader
+                    },
                     body: JSON.stringify({
                         ...node,
                         prompt: this.editPromptBuffer.trim()
@@ -335,10 +399,12 @@ export default {
                     this.story.nodes.push(null);
                 }
 
+                const auth = useAuthStore();
                 const response = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
+                        ...auth.authHeader
                     },
                     body: JSON.stringify({
                         nodeIndex: nextNodeIndex,
@@ -370,10 +436,12 @@ export default {
         // Add new method to generate choices
         async generateChoices(nodeIndex) {
             try {
+                const auth = useAuthStore();
                 const response = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${nodeIndex}/choices`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        ...auth.authHeader
                     },
                     body: JSON.stringify({
                         prompt: this.story.nodes[nodeIndex].prompt
@@ -407,7 +475,9 @@ export default {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        prompt: fullPrompt
+                        prompt: fullPrompt,
+                        storyId: this.$route.params.id,
+                        nodeIndex: nodeIndex
                     })
                 });
 
@@ -416,9 +486,13 @@ export default {
                 const data = await response.json();
 
                 // Update server first
+                const auth = useAuthStore();
                 const saveResponse = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${nodeIndex}/image`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        ...auth.authHeader
+                    },
                     body: JSON.stringify({ image: data.imageUrl })
                 });
 
@@ -472,12 +546,14 @@ export default {
                     throw new Error('No prompt available for current node');
                 }
 
+                const auth = useAuthStore();
                 const response = await fetch(
                     `${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${this.currentNode}/choices`,
                     {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            ...auth.authHeader
                         },
                         body: JSON.stringify({
                             prompt: this.story.nodes[this.currentNode].prompt
@@ -547,10 +623,12 @@ export default {
         },
         async deleteStory() {
             try {
+                const auth = useAuthStore();
                 const response = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}`, {
                     method: 'DELETE',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        ...auth.authHeader
                     }
                 });
 
@@ -586,10 +664,12 @@ export default {
         },
 
         async updateTitle(storyId, newTitle) {
+            const auth = useAuthStore();
             const response = await fetch(`${this.apiBaseUrl}/api/stories/${storyId}/title`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
+                    ...auth.authHeader
                 },
                 body: JSON.stringify({ title: newTitle })
             });
@@ -599,6 +679,119 @@ export default {
                 // Update local state with new title and prompt
                 this.story.title = data.title;
                 this.story.nodes[0].prompt = data.newPrompt;
+            }
+        },
+        async togglePublishStatus() {
+            if (this.publishing || !this.story) return;
+            this.publishing = true;
+            this.error = null;
+            try {
+                const auth = useAuthStore();
+                const response = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/publish`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...auth.authHeader
+                    }
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to toggle publish status');
+
+                if (data.success) {
+                    this.story.isPublished = data.isPublished;
+                    this.toast.addToast('success', this.story.isPublished ? 'Story published!' : 'Story reverted to draft.');
+                }
+            } catch (error) {
+                console.error('Error toggling publish status:', error);
+                this.error = error.message;
+                this.toast.addToast('error', 'Failed to update publish status');
+            } finally {
+                this.publishing = false;
+            }
+        },
+        async saveChoiceText(choiceIndex, text) {
+            if (!text || !text.trim()) return;
+            try {
+                const auth = useAuthStore();
+                const response = await fetch(
+                    `${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${this.currentNode}/choice/${choiceIndex}`,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...auth.authHeader
+                        },
+                        body: JSON.stringify({ text: text.trim() })
+                    }
+                );
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to edit choice');
+
+                if (data.success) {
+                    this.story.nodes[this.currentNode].choices = data.choices;
+                    this.toast.addToast('success', 'Choice saved');
+                }
+            } catch (error) {
+                console.error('Error editing choice:', error);
+                this.toast.addToast('error', 'Failed to save choice');
+            }
+        },
+        async deleteChoice(choiceIndex) {
+            if (!confirm("Are you sure you want to delete this choice? This will prune this choice and all downstream branching nodes!")) return;
+            try {
+                const auth = useAuthStore();
+                const response = await fetch(
+                    `${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${this.currentNode}/choice/${choiceIndex}`,
+                    {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...auth.authHeader
+                        }
+                    }
+                );
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to delete choice');
+
+                if (data.success) {
+                    this.story.nodes = data.nodes;
+                    this.toast.addToast('success', 'Choice deleted and branch pruned');
+                }
+            } catch (error) {
+                console.error('Error deleting choice:', error);
+                this.toast.addToast('error', 'Failed to delete choice');
+            }
+        },
+        async addCustomChoice() {
+            if (!this.newChoiceText || !this.newChoiceText.trim()) return;
+            try {
+                const auth = useAuthStore();
+                const response = await fetch(
+                    `${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${this.currentNode}/choice`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...auth.authHeader
+                        },
+                        body: JSON.stringify({ text: this.newChoiceText.trim() })
+                    }
+                );
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Failed to add choice');
+
+                if (data.success) {
+                    this.story.nodes = data.nodes;
+                    this.newChoiceText = '';
+                    this.toast.addToast('success', 'Custom choice added');
+                }
+            } catch (error) {
+                console.error('Error adding choice:', error);
+                this.toast.addToast('error', 'Failed to add choice');
             }
         }
     },
@@ -771,6 +964,13 @@ export default {
     gap: var(--space-sm);
     align-items: center;
 }
+.story-title-static {
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    flex: 1;
+}
 .title-input {
     flex: 1;
     padding: var(--space-sm) var(--space-md);
@@ -928,5 +1128,75 @@ export default {
     padding: var(--space-md);
     color: var(--text-muted);
     font-style: italic;
+}
+
+/* ── Publish Control ───────────────────── */
+.publish-control-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-top: calc(-1 * var(--space-xs));
+    margin-bottom: var(--space-xs);
+}
+.badge-published {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+.badge-draft {
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+/* ── Choices Editor ────────────────────── */
+.choices-list-editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    background: var(--bg-secondary);
+    padding: var(--space-md);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+}
+.choice-edit-row, .choice-add-row {
+    display: flex;
+    gap: var(--space-xs);
+    align-items: center;
+}
+.choice-edit-input, .choice-add-input {
+    flex: 1;
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    transition: border-color var(--transition-fast);
+}
+.choice-edit-input:focus, .choice-add-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.choices-editor-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: var(--space-md);
+}
+.btn-icon {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: var(--space-sm);
+    font-size: var(--text-base);
+    border-radius: var(--radius-md);
+    transition: background var(--transition-fast);
+}
+.btn-icon:hover {
+    background: var(--bg-hover);
+}
+.btn-icon.btn-danger:hover {
+    background: var(--danger-soft);
 }
 </style>

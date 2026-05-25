@@ -11,12 +11,13 @@
     </div>
     <div v-else-if="stories.length === 0" class="flex-center" style="flex-direction:column; gap:var(--space-lg); padding:var(--space-3xl);">
       <p style="font-size:var(--text-lg); color:var(--text-muted);">You haven&rsquo;t created any stories yet.</p>
-      <router-link to="/" class="btn btn-primary">Browse Stories</router-link>
+      <button class="btn btn-primary" @click="createNewStory">Create Your First Story</button>
     </div>
     <div v-else class="story-grid">
       <StoryCard v-for="story in stories" :key="story._id" :story="story" />
-      <CreateStoryCard />
+      <CreateStoryCard @create="createNewStory" />
     </div>
+    <CreateStoryDialog v-if="showCreateDialog" @close="showCreateDialog = false" @created="onStoryCreated" />
   </div>
 </template>
 
@@ -24,15 +25,17 @@
 import { useAuthStore } from '@/stores/useAuth.js'
 import StoryCard from '@/components/StoryCard.vue'
 import CreateStoryCard from '@/components/CreateStoryCard.vue'
+import CreateStoryDialog from '@/components/CreateStoryDialog.vue'
 
 export default {
   name: 'MyStoriesView',
-  components: { StoryCard, CreateStoryCard },
+  components: { StoryCard, CreateStoryCard, CreateStoryDialog },
   data() {
     return {
       stories: [],
       loading: true,
-      error: null
+      error: null,
+      showCreateDialog: false
     }
   },
   async mounted() {
@@ -64,6 +67,13 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    createNewStory() {
+      this.showCreateDialog = true
+    },
+    onStoryCreated(storyId) {
+      this.showCreateDialog = false
+      this.$router.push('/story/' + storyId)
     }
   }
 }
@@ -72,4 +82,9 @@ export default {
 <style scoped>
 .my-stories-view { max-width: 1200px; margin: 0 auto; }
 .my-stories-view h2 { margin-bottom: var(--space-lg); color: var(--text-primary); }
+.story-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-lg);
+}
 </style>

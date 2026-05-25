@@ -3,6 +3,7 @@
 [![Course](https://img.shields.io/badge/WUSTL-CSE%20503S-blue.svg)](https://cse.wustl.edu/)
 [![Framework](https://img.shields.io/badge/Vue.js-3.x-emerald.svg)](https://vuejs.org/)
 [![Runtime](https://img.shields.io/badge/Node.js-%3E%3D%2018-green.svg)](https://nodejs.org/)
+[![Package Manager](https://img.shields.io/badge/pnpm-10.x-orange.svg)](https://pnpm.io/)
 [![Database](https://img.shields.io/badge/MongoDB-Atlas-success.svg)](https://www.mongodb.com/)
 [![AI-Powered](https://img.shields.io/badge/Gemini%20%7C%20fal.ai-Powered-blueviolet.svg)](https://deepmind.google/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -28,6 +29,7 @@
 
 ### Prerequisites
 * **Node.js** >= 18.x
+* **pnpm** >= 10.x (install via `npm install -g pnpm@10` or `corepack enable pnpm`)
 * **MongoDB** (Atlas cluster or local service running on port `27017`)
 * **Google Gemini API Key** (for choice/prompt logic)
 * **fal.ai Key** (for Flux Schnell artwork generation)
@@ -40,7 +42,7 @@ git clone https://github.com/agopalareddy/CSE503S_Interactive_Storybook.git
 cd CSE503S_Interactive_Storybook/interactive-storybook
 
 # Install dependencies
-npm install
+pnpm install
 ```
 
 ### Environment Configuration
@@ -62,12 +64,17 @@ VUE_APP_PORT=8000
 
 Start both the Express backend API and the Vue CLI development server concurrently using a single command:
 ```bash
-npm run dev
+pnpm run serve
 ```
 
 The system will initialize:
 * **Backend API server** listening on port `8000` (establishing database connections)
 * **Vue CLI dev server** compiling assets and opening the browser on `http://localhost:8080/storybook/`
+
+For production builds:
+```bash
+pnpm run build
+```
 
 ---
 
@@ -97,7 +104,9 @@ interactive-storybook/
 │       ├── Profile.vue    # Dashboard stats cards, passwords, danger account deletion
 │       └── MyStories.vue  # Gated personal workspace stories list
 ├── uploads/               # Disk storage directory for custom uploaded cover illustrations
-└── package.json           # Tasks compilation scripts and dependencies listing
+├── package.json           # Tasks compilation scripts and dependencies listing
+├── pnpm-lock.yaml         # pnpm dependency lockfile (deterministic installs)
+└── pnpm-workspace.yaml    # pnpm configuration (overrides, build permissions, hoisting)
 ```
 
 ---

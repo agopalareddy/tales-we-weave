@@ -222,6 +222,8 @@ async function connectToDatabase() {
       process.exit();
     });
   });
+}
+
 function deleteNodeImageFile(imageUrl) {
   if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.startsWith("/api/uploads/")) {
     return;

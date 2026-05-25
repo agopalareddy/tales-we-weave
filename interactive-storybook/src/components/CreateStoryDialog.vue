@@ -131,7 +131,6 @@
 </template>
 
 <script>
-import { useAuthStore } from '@/stores/useAuth.js'
 import { useToast } from '@/stores/useToast.js'
 import { apiFetch } from '@/utils/api.js'
 

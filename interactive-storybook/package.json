@@ -55,6 +55,13 @@
     "not dead",
     "not ie 11"
   ],
+  "overrides": {
+    "cross-spawn": "^7.0.5",
+    "postcss": "^8.5.10",
+    "serialize-javascript": "^7.0.5",
+    "uuid": "^11.1.1",
+    "webpack-dev-server": "^5.2.1"
+  },
   "_id": "interactive-storybook@1.0.0",
   "keywords": [],
   "license": "ISC",

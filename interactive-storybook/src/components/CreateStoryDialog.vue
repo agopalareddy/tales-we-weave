@@ -203,7 +203,6 @@ export default {
       this.progress = 0
 
       try {
-        const auth = useAuthStore()
         const toast = useToast()
 
         const tags = this.tagsInput.split(',')

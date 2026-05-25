@@ -74,7 +74,7 @@ export default {
         {
           category: 'general',
           question: 'How do sparse tree nodes work in stories?',
-          answer: 'Stories are structured as a **sparse tree array**. The root scene is always Node 0. Clicking a choice triggers the creation of a new target node index linked back to its parent. Because the tree is sparse, taking different paths creates populated nodes at specific indices without shifting the rest, preserving narrative links perfectly.'
+          answer: 'Stories are structured as a <strong>sparse tree array</strong>. The root scene is always Node 0. Clicking a choice triggers the creation of a new target node index linked back to its parent. Because the tree is sparse, taking different paths creates populated nodes at specific indices without shifting the rest, preserving narrative links perfectly.'
         },
         {
           category: 'ai',
@@ -89,12 +89,12 @@ export default {
         {
           category: 'graph',
           question: 'How do I navigate using the zoomable SVG Narrative Node Graph?',
-          answer: 'Inside the story display, you can toggle the collapsible Narrative Tree panel. It renders a dynamic SVG map showing the branching structure. You can **drag and pan** the canvas, **scroll/pinch to zoom** in or out, and **click on any circle node** to instantly jump your reader view to that exact scene!'
+          answer: 'Inside the story display, you can toggle the collapsible Narrative Tree panel. It renders a dynamic SVG map showing the branching structure. You can <strong>drag and pan</strong> the canvas, <strong>scroll/pinch to zoom</strong> in or out, and <strong>click on any circle node</strong> to instantly jump your reader view to that exact scene!'
         },
         {
           category: 'graph',
           question: 'What do the different colors on the Node Graph represent?',
-          answer: 'The graph dynamically colors nodes based on your reading progress: The **green glowing node** represents your active scene. **Slate filled nodes** are scenes you have already visited. **Dashed borders or uncolored circles** represent unexplored branches.'
+          answer: 'The graph dynamically colors nodes based on your reading progress: The <strong>green glowing node</strong> represents your active scene. <strong>Slate filled nodes</strong> are scenes you have already visited. <strong>Dashed borders or uncolored circles</strong> represent unexplored branches.'
         },
         {
           category: 'safety',
@@ -104,7 +104,7 @@ export default {
         {
           category: 'safety',
           question: 'Can I delete specific scenes from my stories?',
-          answer: 'Yes! Authors can click the trash icon (🗑️) beside the prompt editor. To preserve tree integrity, we utilize **intelligent cascading deletion**—deleting a scene automatically purges all of its descendant branches and disconnects the choice in the parent node. **Associated custom images on disk** are also permanently unlinked to maintain storage efficiency. (Deleting Scene 0 deletes the story itself).'
+          answer: 'Yes! Authors can click the trash icon (🗑️) beside the prompt editor. To preserve tree integrity, we utilize <strong>intelligent cascading deletion</strong>—deleting a scene automatically purges all of its descendant branches and disconnects the choice in the parent node. <strong>Associated custom images on disk</strong> are also permanently unlinked to maintain storage efficiency. (Deleting Scene 0 deletes the story itself).'
         },
         {
           category: 'safety',

@@ -244,11 +244,8 @@ export default {
         flattenTree() {
             if (!this.story?.nodes) return [];
             const result = [];
-            const visited = new Set();
             const walk = (nodeIdx, depth, parentHasMoreSiblings) => {
                 if (nodeIdx >= this.story.nodes.length) return;
-                if (visited.has(nodeIdx)) return; // Prevent duplicate visits from overlapping nextNodeId values
-                visited.add(nodeIdx);
                 const node = this.story.nodes[nodeIdx];
                 const choices = node ? (node.choices || []) : [];
                 const validChildren = choices.filter(c => c.nextNodeId !== undefined && c.nextNodeId !== null);

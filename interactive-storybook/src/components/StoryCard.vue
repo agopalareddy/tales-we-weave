@@ -7,7 +7,16 @@
       </div>
     </div>
     <div class="card-body">
+      <div class="genre-row">
+        <span class="genre-badge">{{ story.genre || 'Adventure' }}</span>
+      </div>
       <h3 class="card-title">{{ story.title || 'Untitled' }}</h3>
+      <p v-if="story.description" class="card-desc">{{ story.description }}</p>
+      
+      <div v-if="story.tags && story.tags.length" class="card-tags">
+        <span v-for="tag in story.tags.slice(0, 3)" :key="tag" class="tag-badge">#{{ tag }}</span>
+      </div>
+
       <div class="card-meta">
         <span v-if="story.isPublished === false" class="badge badge-draft">Draft</span>
         <span v-else class="badge badge-published">Published</span>
@@ -42,7 +51,41 @@ export default {
 .card-thumbnail img { width: 100%; height: 100%; object-fit: cover; }
 .card-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; }
 .card-body { padding: var(--space-md) var(--space-lg); }
-.card-title { font-size: var(--text-base); margin-bottom: var(--space-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.genre-row { margin-bottom: var(--space-xs); }
+.genre-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.card-title { font-size: var(--text-base); margin-bottom: var(--space-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.card-desc {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-bottom: var(--space-sm);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  height: 2.8em;
+}
+.card-tags {
+  display: flex;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+  flex-wrap: wrap;
+}
+.tag-badge {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
 .card-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
 .badge { font-size: var(--text-xs); padding: 0.15rem 0.5rem; border-radius: 999px; font-weight: 600; }
 .badge-published { background: var(--accent-soft); color: var(--accent); }

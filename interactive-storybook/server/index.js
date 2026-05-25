@@ -231,7 +231,29 @@ function setupRoutes() {
     // Get all stories
     app.get("/api/stories", async (req, res) => {
       try {
-        const stories = await storiesCollection.find({ isPublished: { $ne: false } }).toArray();
+        const { search, genre, sort } = req.query;
+        let query = { isPublished: { $ne: false } };
+        
+        if (search && search.trim()) {
+          query.title = { $regex: search.trim(), $options: "i" };
+        }
+        
+        if (genre && genre.trim() && genre !== "all") {
+          query.genre = genre.trim();
+        }
+        
+        let cursor = storiesCollection.find(query);
+        
+        // Sorting: "newest" (default), "oldest", "alphabetical"
+        if (sort === "oldest") {
+          cursor = cursor.sort({ createdAt: 1 });
+        } else if (sort === "alphabetical") {
+          cursor = cursor.sort({ title: 1 });
+        } else {
+          cursor = cursor.sort({ createdAt: -1 });
+        }
+        
+        const stories = await cursor.toArray();
         res.json(stories);
       } catch (error) {
         if (!storiesCollection) {
@@ -260,6 +282,33 @@ function setupRoutes() {
       try {
         const id = new ObjectId(req.params.id);
         const story = await storiesCollection.findOne({ _id: id });
+        if (!story) {
+          return res.status(404).json({ error: "Story not found" });
+        }
+        
+        // Soft auth check: if story is a draft, verify the user is the owner
+        if (story.isPublished === false) {
+          const authHeader = req.headers.authorization;
+          let authorized = false;
+          if (authHeader && authHeader.startsWith("Bearer ")) {
+            const token = authHeader.split(" ")[1];
+            try {
+              if (usersCollection) {
+                const user = await usersCollection.findOne({ token });
+                if (user && story.userId === user._id.toString()) {
+                  authorized = true;
+                }
+              }
+            } catch (e) {
+              console.error("Soft auth check failed:", e);
+            }
+          }
+          
+          if (!authorized) {
+            return res.status(403).json({ error: "You are not authorized to view this draft story" });
+          }
+        }
+        
         res.json(story);
       } catch (error) {
         console.error("Error fetching story:", error);
@@ -330,8 +379,9 @@ function setupRoutes() {
 
         delete updatedStory._id;
 
-        // Filter out null nodes before updating
-        updatedStory.nodes = updatedStory.nodes.filter((node) => node !== null);
+        // Preserve sparse array structure containing null nodes for correct branch mapping
+        // updatedStory.nodes should retain null values to avoid shifting indices
+
 
         const result = await storiesCollection.updateOne(
           { _id: id },
@@ -339,6 +389,9 @@ function setupRoutes() {
             $set: {
               title: updatedStory.title,
               nodes: updatedStory.nodes,
+              genre: updatedStory.genre !== undefined ? updatedStory.genre : story.genre,
+              description: updatedStory.description !== undefined ? updatedStory.description : story.description,
+              tags: updatedStory.tags !== undefined ? updatedStory.tags : story.tags,
               updatedAt: new Date(),
             },
           }
@@ -413,7 +466,15 @@ function setupRoutes() {
           return res.status(403).json({ error: "You are not authorized to update this story's nodes" });
         }
         const nodeIndex = parseInt(req.params.nodeIndex);
-        const { image } = req.body;
+        let { image } = req.body;
+
+        if (image && image.startsWith("data:image/")) {
+          try {
+            image = await saveBase64Image(image, req.params.id, nodeIndex);
+          } catch (e) {
+            return res.status(400).json({ error: "Failed to process uploaded image: " + e.message });
+          }
+        }
 
         // Update the specific node's image in the story
         const result = await storiesCollection.updateOne(
@@ -421,11 +482,11 @@ function setupRoutes() {
           { $set: { [`nodes.${nodeIndex}.image`]: image } }
         );
 
-        if (result.modifiedCount === 0) {
+        if (result.matchedCount === 0) {
           return res.status(404).json({ error: "Story or node not found" });
         }
 
-        res.json({ success: true });
+        res.json({ success: true, imageUrl: image });
       } catch (error) {
         console.error("Error updating node image:", error);
         res.status(500).json({ error: "Failed to update node image" });
@@ -587,6 +648,104 @@ function setupRoutes() {
       const safeUser = sanitizeUser(req.user);
       res.json(safeUser);
     });
+
+    // Get user progress for a story
+    app.get("/api/users/progress/:storyId", authenticateUser, async (req, res) => {
+      try {
+        const storyId = req.params.storyId;
+        const progressList = req.user.progress || [];
+        const item = progressList.find(p => p.storyId === storyId);
+        res.json({ currentNode: item ? item.currentNode : 0 });
+      } catch (error) {
+        console.error("Error fetching progress:", error);
+        res.status(500).json({ error: "Failed to fetch progress" });
+      }
+    });
+
+    // Save user progress for a story
+    app.post("/api/users/progress", authenticateUser, async (req, res) => {
+      try {
+        const { storyId, nodeId } = req.body;
+        if (!storyId || nodeId === undefined) {
+          return res.status(400).json({ error: "Missing storyId or nodeId" });
+        }
+        
+        const progressList = req.user.progress || [];
+        const index = progressList.findIndex(p => p.storyId === storyId);
+        
+        if (index > -1) {
+          progressList[index].currentNode = parseInt(nodeId);
+        } else {
+          progressList.push({ storyId, currentNode: parseInt(nodeId) });
+        }
+        
+        await usersCollection.updateOne(
+          { _id: req.user._id },
+          { $set: { progress: progressList } }
+        );
+        
+        res.json({ success: true, progress: progressList });
+      } catch (error) {
+        console.error("Error saving progress:", error);
+        res.status(500).json({ error: "Failed to save progress" });
+      }
+    });
+
+    // Get user stats dashboard data
+    app.get("/api/users/stats", authenticateUser, async (req, res) => {
+      try {
+        const userId = req.user._id.toString();
+        const storiesCount = await storiesCollection.countDocuments({ userId });
+        const userStories = await storiesCollection.find({ userId }).toArray();
+        
+        let totalNodes = 0;
+        let illustratedNodes = 0;
+        
+        for (const story of userStories) {
+          if (story.nodes && Array.isArray(story.nodes)) {
+            for (const node of story.nodes) {
+              if (node) {
+                totalNodes++;
+                if (node.image) {
+                  illustratedNodes++;
+                }
+              }
+            }
+          }
+        }
+        
+        res.json({
+          storiesCount,
+          totalNodes,
+          illustratedNodes,
+          memberSince: req.user._id.getTimestamp ? req.user._id.getTimestamp() : new Date()
+        });
+      } catch (error) {
+        console.error("Error gathering user stats:", error);
+        res.status(500).json({ error: "Failed to gather metrics" });
+      }
+    });
+
+    // Update user profile password
+    app.put("/api/users/profile", authenticateUser, async (req, res) => {
+      try {
+        const { password } = req.body;
+        if (!password || password.trim().length < 4) {
+          return res.status(400).json({ error: "Password must be at least 4 characters long" });
+        }
+        
+        const hashedPassword = await bcrypt.hash(password.trim(), saltRounds);
+        await usersCollection.updateOne(
+          { _id: req.user._id },
+          { $set: { password: hashedPassword } }
+        );
+        
+        res.json({ success: true, message: "Profile updated successfully" });
+      } catch (error) {
+        console.error("Error updating profile:", error);
+        res.status(500).json({ error: "Failed to update profile" });
+      }
+    });
     // Image generation endpoint (uses fal.ai flux/schnell)
     app.post("/api/generate-image", async (req, res) => {
       if (!req.body || !req.body.prompt) {
@@ -742,6 +901,35 @@ async function downloadAndSaveImage(imageUrl, storyId, nodeIndex) {
     throw error;
   }
 }
+
+// Helper to save base64 uploaded image locally
+async function saveBase64Image(base64Data, storyId, nodeIndex) {
+  try {
+    const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      throw new Error("Invalid base64 string format");
+    }
+    const buffer = Buffer.from(matches[2], 'base64');
+    const ext = matches[1].split('/')[1] || 'png';
+    
+    const uploadsDir = path.join(__dirname, "../uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    
+    const sId = storyId || "temp";
+    const nIdx = nodeIndex !== undefined ? nodeIndex : "unknown";
+    const filename = `story_${sId}_node_${nIdx}_uploaded_${Date.now()}.${ext}`;
+    const filePath = path.join(uploadsDir, filename);
+    
+    fs.writeFileSync(filePath, buffer);
+    return `/api/uploads/${filename}`;
+  } catch (error) {
+    console.error("Error saving base64 image:", error);
+    throw error;
+  }
+}
+
 
 // In server/index.js, add this new function:
 async function generateChoices(prompt, storyTitle, currentPrompt, nextBaseId) {

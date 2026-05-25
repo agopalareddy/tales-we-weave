@@ -14,14 +14,39 @@
     <div v-else-if="story" class="story-view">
         <!-- Story Tree Toggle -->
         <button class="tree-toggle" @click="showTree = !showTree" :aria-expanded="showTree">
-            <span v-if="showTree">✕ Hide Tree</span>
-            <span v-else>🌳 Show Story Tree</span>
+            <span v-if="showTree">✕ Hide Map</span>
+            <span v-else>🌳 Show Story Map</span>
         </button>
 
-        <!-- Story Tree Panel -->
-        <div v-if="showTree" class="tree-panel">
-            <div class="tree-title">Story Branches</div>
-            <div class="tree-content">
+        <!-- Story Tree Panel with NodeGraph -->
+        <div v-if="showTree" class="tree-panel-outer">
+            <div class="tree-toolbar-inner">
+                <div class="tree-title">Story Branches</div>
+                <div class="tree-view-toggle">
+                    <button 
+                        @click="treeViewMode = 'graph'" 
+                        class="btn btn-xs" 
+                        :class="treeViewMode === 'graph' ? 'btn-primary' : 'btn-ghost'"
+                    >🌳 Web Graph</button>
+                    <button 
+                        @click="treeViewMode = 'list'" 
+                        class="btn btn-xs" 
+                        :class="treeViewMode === 'list' ? 'btn-primary' : 'btn-ghost'"
+                    >📋 List View</button>
+                </div>
+            </div>
+
+            <!-- Render NodeGraph if graph mode -->
+            <NodeGraph 
+                v-if="treeViewMode === 'graph'" 
+                :nodes="story.nodes" 
+                :currentNode="currentNode" 
+                :visitedNodes="visitedNodes"
+                @select-node="nodeNav"
+            />
+
+            <!-- Render standard list if list mode -->
+            <div v-else class="tree-content">
                 <div v-for="line in flattenTree" :key="line.idx" class="tree-node" :class="{
                     'tree-node--current': line.idx === currentNode,
                     'tree-node--visited': visitedNodes.has(line.idx),
@@ -98,13 +123,76 @@
                 </div>
             </div>
 
-            <div v-if="loading" class="text-muted" style="padding: var(--space-md); text-align: center;">Generating image…</div>
+            <!-- Detailed AI Operations Loading Console -->
+            <div v-if="aiProgressActive" class="ai-console card">
+                <div class="console-header">
+                    <span class="console-dot pulse"></span>
+                    <span class="console-title">{{ aiProgressTitle }}</span>
+                </div>
+                <div class="console-body">
+                    <div 
+                        v-for="(step, idx) in aiProgressSteps" 
+                        :key="idx" 
+                        class="console-line"
+                        :class="{ 
+                            'line-done': idx < aiProgressStepIndex, 
+                            'line-active': idx === aiProgressStepIndex,
+                            'line-pending': idx > aiProgressStepIndex 
+                        }"
+                    >
+                        <span class="line-status">
+                            {{ idx < aiProgressStepIndex ? '✓' : idx === aiProgressStepIndex ? '●' : '○' }}
+                        </span>
+                        <span class="line-text">{{ step }}</span>
+                    </div>
+                </div>
+            </div>
 
             <div v-if="story.nodes[currentNode]?.image" class="image-wrapper">
                 <img :src="story.nodes[currentNode].image" alt="Story illustration">
-                <button v-if="isOwner" @click="regenerateImage" :disabled="loading" class="img-regen-btn" title="Regenerate image">
-                    🔄
-                </button>
+                <div v-if="isOwner" class="image-overlay-actions">
+                    <button @click="triggerImageUpload" :disabled="loading" class="img-overlay-btn" title="Upload Custom Cover">
+                        📤 Upload Custom
+                    </button>
+                    <button @click="regenerateImage" :disabled="loading" class="img-overlay-btn" title="Regenerate Image with AI">
+                        🔄 AI Regen
+                    </button>
+                </div>
+                <!-- Hidden file input -->
+                <input 
+                    type="file" 
+                    ref="fileInput" 
+                    @change="handleImageUpload" 
+                    style="display:none;" 
+                    accept="image/*"
+                >
+            </div>
+
+            <!-- AI Art Director Override settings -->
+            <div v-if="isOwner && story.nodes[currentNode]" class="art-director-section card">
+                <div class="art-director-header" @click="toggleVisualPrompt">
+                    <span>🎨 AI Art Director Custom Visual Style</span>
+                    <span class="toggle-icon">{{ editingVisualPrompt ? '▼' : '▶' }}</span>
+                </div>
+                <div v-if="editingVisualPrompt" class="art-director-body">
+                    <p class="text-muted text-xs mb-sm" style="margin-bottom: var(--space-xs);">
+                        Define a custom visual prompt for this node. If defined, the AI will use this instead of the text prompt.
+                    </p>
+                    <div class="visual-prompt-form">
+                        <textarea 
+                            v-model="editVisualPromptBuffer" 
+                            class="prompt-textarea text-sm"
+                            style="font-size: var(--text-sm); min-height: 48px;"
+                            placeholder="e.g. A digital fantasy painting of a glowing mystical path, highly detailed, Ghibli style, volumetric light..."
+                            rows="2"
+                        ></textarea>
+                        <div class="visual-prompt-actions">
+                            <button @click="saveVisualPrompt" class="btn btn-primary btn-xs mt-xs" style="margin-top: 4px;">
+                                Save Style
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div v-if="error" class="error-message">{{ error }}</div>
@@ -192,14 +280,17 @@
 <script>
 import { useToast } from '@/stores/useToast.js'
 import { useAuthStore } from '@/stores/useAuth.js'
+import { apiFetch } from '@/utils/api.js'
 import ChoiceButton from './ChoiceButton.vue';
 import NavigationLinks from './NavigationLinks.vue';
+import NodeGraph from './NodeGraph.vue';
 
 export default {
     name: 'StoryDisplay',
     components: {
         ChoiceButton,
         NavigationLinks,
+        NodeGraph
     },
     data() {
         return {
@@ -219,10 +310,21 @@ export default {
             editingPrompt: false,
             editPromptBuffer: '',
             showTree: false,
+            treeViewMode: 'graph', // 'graph' or 'list'
             visitedNodes: new Set(),
             choiceEditingMode: false,
             newChoiceText: '',
             publishing: false,
+
+            // AI Art Director Visual Override
+            editingVisualPrompt: false,
+            editVisualPromptBuffer: '',
+
+            // AI loading console log checklist
+            aiProgressActive: false,
+            aiProgressTitle: 'Running operations...',
+            aiProgressSteps: [],
+            aiProgressStepIndex: 0
         };
     },
     computed: {
@@ -278,6 +380,22 @@ export default {
             async handler(newNode) {
                 if (newNode !== undefined && newNode !== null) {
                     this.visitedNodes.add(newNode);
+
+                    // Save reader bookmark progress if user is logged in
+                    const auth = useAuthStore();
+                    if (auth.isLoggedIn) {
+                        try {
+                            await apiFetch(`${this.apiBaseUrl}/api/users/progress`, {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    storyId: this.$route.params.id,
+                                    nodeId: newNode
+                                })
+                            });
+                        } catch (e) {
+                            console.error('Failed to save progress bookmark:', e);
+                        }
+                    }
                 }
                 if (this.story?.nodes) {
                     if (!this.story.nodes[newNode]) {
@@ -299,7 +417,7 @@ export default {
             this.storyNotFound = false;
             try {
                 const storyId = this.$route.params.id;
-                const response = await fetch(`${this.apiBaseUrl}/api/stories/${storyId}`);
+                const response = await apiFetch(`${this.apiBaseUrl}/api/stories/${storyId}`);
 
                 if (response.status === 404) {
                     this.storyNotFound = true;
@@ -317,9 +435,28 @@ export default {
 
                 this.story = data;
 
-                // Respect URL node param; fall back to 0
+                // Restore progress bookmark if logged in and not overridden by query
+                let progressNode = 0;
+                const auth = useAuthStore();
+                if (auth.isLoggedIn) {
+                    try {
+                        const progRes = await apiFetch(`${this.apiBaseUrl}/api/users/progress/${storyId}`);
+                        if (progRes.ok) {
+                            const progData = await progRes.json();
+                            if (progData.currentNode !== undefined && progData.currentNode >= 0 && this.story.nodes[progData.currentNode]) {
+                                progressNode = progData.currentNode;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Failed to restore progress bookmark:', e);
+                    }
+                }
+
                 const nodeParam = parseInt(this.$route.query.node);
-                const startNode = (!isNaN(nodeParam) && nodeParam >= 0 && this.story.nodes[nodeParam]) ? nodeParam : 0;
+                const startNode = (!isNaN(nodeParam) && nodeParam >= 0 && this.story.nodes[nodeParam]) 
+                    ? nodeParam 
+                    : (progressNode > 0 ? progressNode : 0);
+                
                 this.currentNode = startNode;
 
                 // Only generate image for the first node if it's node 0 AND has no image
@@ -355,13 +492,8 @@ export default {
             const nodeIndex = this.currentNode;
             
             try {
-                const auth = useAuthStore();
-                const res = await fetch(`${this.apiBaseUrl}/api/stories/${storyId}/node/${nodeIndex}`, {
+                const res = await apiFetch(`${this.apiBaseUrl}/api/stories/${storyId}/node/${nodeIndex}`, {
                     method: 'PUT',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        ...auth.authHeader
-                    },
                     body: JSON.stringify({
                         ...node,
                         prompt: this.editPromptBuffer.trim()
@@ -389,23 +521,17 @@ export default {
                 if (!this.story) {
                     throw new Error("Story not loaded");
                 }
-                // Use targetNodeIndex if provided, otherwise determine from array length
                 const nextNodeIndex = (targetNodeIndex !== undefined && targetNodeIndex >= 0)
                     ? targetNodeIndex
                     : this.story.nodes.length;
 
-                // Pad the nodes array so the target index exists
+                // Pad sparse array
                 while (this.story.nodes.length <= nextNodeIndex) {
                     this.story.nodes.push(null);
                 }
 
-                const auth = useAuthStore();
-                const response = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node`, {
+                const response = await apiFetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...auth.authHeader
-                    },
                     body: JSON.stringify({
                         nodeIndex: nextNodeIndex,
                         nodeId: nextNodeIndex,
@@ -423,7 +549,6 @@ export default {
 
                 const result = await response.json();
                 if (result.success) {
-                    // Update local state without triggering additional fetches
                     this.story.nodes[nextNodeIndex] = result.node;
                     this.story.lastNodeId = nextNodeIndex;
                     return result.node;
@@ -433,29 +558,41 @@ export default {
                 throw error;
             }
         },
-        // Add new method to generate choices
         async generateChoices(nodeIndex) {
             try {
-                const auth = useAuthStore();
-                const response = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${nodeIndex}/choices`, {
+                this.aiProgressActive = true;
+                this.aiProgressTitle = "Generating Branches...";
+                this.aiProgressSteps = [
+                    "Reading scene prompt content...",
+                    "Analyzing branching directions...",
+                    "Querying Gemini AI for choices...",
+                    "Reserving future narrative paths!"
+                ];
+                this.aiProgressStepIndex = 0;
+
+                this.aiProgressStepIndex = 1;
+                this.aiProgressStepIndex = 2;
+                const response = await apiFetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${nodeIndex}/choices`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...auth.authHeader
-                    },
                     body: JSON.stringify({
                         prompt: this.story.nodes[nodeIndex].prompt
                     })
                 });
 
+                this.aiProgressStepIndex = 3;
                 if (!response.ok) {
                     throw new Error('Failed to generate choices');
                 }
 
                 const result = await response.json();
                 this.story.nodes[nodeIndex].choices = result.choices;
+                this.aiProgressStepIndex = 4;
             } catch (error) {
                 console.error('Error generating choices:', error);
+            } finally {
+                setTimeout(() => {
+                    this.aiProgressActive = false;
+                }, 1000);
             }
         },
         async generateAndSaveImage(nodeIndex) {
@@ -463,19 +600,36 @@ export default {
             this.loading = true;
             this.error = null;
 
+            this.aiProgressActive = true;
+            this.aiProgressTitle = "Generating Artwork...";
+            this.aiProgressSteps = [
+                "Analyzing narrative details from current scene...",
+                "Drafting visual composition for fal.ai Flux...",
+                "Submitting artwork task to rendering queue...",
+                "Generating high fidelity pixels (fal.ai Schnell)...",
+                "Downloading completed illustration to server...",
+                "Linking visual canvas to narrative story node!"
+            ];
+            this.aiProgressStepIndex = 0;
+
             try {
                 const currentNode = this.story.nodes[nodeIndex];
-                // Combine prompt and choices into a single descriptive prompt
-                const choices = currentNode.choices?.map(c => c.text).join(' or ') || '';
-                const fullPrompt = `${currentNode.prompt} ${choices ? `With choices: ${choices}` : ''}`;
+                this.aiProgressStepIndex = 1;
 
-                const response = await fetch(`${this.apiBaseUrl}/api/generate-image`, {
+                // Check custom visual prompt override first
+                let promptSource = currentNode.prompt;
+                if (currentNode.visualPrompt && currentNode.visualPrompt.trim()) {
+                    promptSource = currentNode.visualPrompt.trim();
+                } else {
+                    const choices = currentNode.choices?.map(c => c.text).join(' or ') || '';
+                    promptSource = `${currentNode.prompt} ${choices ? `With choices: ${choices}` : ''}`;
+                }
+
+                this.aiProgressStepIndex = 2;
+                const response = await apiFetch(`${this.apiBaseUrl}/api/generate-image`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
                     body: JSON.stringify({
-                        prompt: fullPrompt,
+                        prompt: promptSource,
                         storyId: this.$route.params.id,
                         nodeIndex: nodeIndex
                     })
@@ -483,28 +637,28 @@ export default {
 
                 if (!response.ok) throw new Error(`Image generation failed: ${response.statusText}`);
 
+                this.aiProgressStepIndex = 3;
                 const data = await response.json();
 
-                // Update server first
-                const auth = useAuthStore();
-                const saveResponse = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${nodeIndex}/image`, {
+                this.aiProgressStepIndex = 4;
+                const saveResponse = await apiFetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${nodeIndex}/image`, {
                     method: 'PUT',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        ...auth.authHeader
-                    },
                     body: JSON.stringify({ image: data.imageUrl })
                 });
 
                 if (!saveResponse.ok) throw new Error('Failed to save image');
 
-                // Update local state after server confirms
+                this.aiProgressStepIndex = 5;
                 this.story.nodes[nodeIndex].image = data.imageUrl;
+                this.aiProgressStepIndex = 6;
             } catch (error) {
                 console.error('Error:', error);
                 this.error = error.message;
             } finally {
                 this.loading = false;
+                setTimeout(() => {
+                    this.aiProgressActive = false;
+                }, 1000);
             }
         },
         async handleChoice(nodeIndex) {
@@ -516,14 +670,11 @@ export default {
                     throw new Error('Invalid choice');
                 }
 
-                // Create the node at nodeIndex if it doesn't exist yet
                 if (!this.story.nodes[nodeIndex]) {
                     const choice = this.story?.nodes[this.currentNode]?.choices?.find(c => c.nextNodeId === nodeIndex);
                     await this.createNewNode(this.currentNode, choice ? choice.text : 'Continue...', nodeIndex);
                 }
 
-                // Release loading BEFORE setting currentNode so the watcher
-                // can call generateAndSaveImage without being blocked
                 this.loading = false;
                 this.currentNode = nodeIndex;
             } catch (error) {
@@ -531,7 +682,6 @@ export default {
                 this.error = error.message;
                 this.loading = false;
             }
-
         },
         async regenerateImage() {
             await this.generateAndSaveImage(this.currentNode);
@@ -546,15 +696,10 @@ export default {
                     throw new Error('No prompt available for current node');
                 }
 
-                const auth = useAuthStore();
-                const response = await fetch(
+                const response = await apiFetch(
                     `${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${this.currentNode}/choices`,
                     {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...auth.authHeader
-                        },
                         body: JSON.stringify({
                             prompt: this.story.nodes[this.currentNode].prompt
                         })
@@ -571,11 +716,7 @@ export default {
                     throw new Error(data.error || 'Failed to update choices');
                 }
 
-                // Update local state with new choices
                 this.story.nodes[this.currentNode].choices = data.choices;
-
-                // Fetch fresh story data to ensure consistency
-
             } catch (error) {
                 console.error('Error regenerating choices:', error);
                 this.error = error.message;
@@ -585,37 +726,30 @@ export default {
         },
         async updateStoryTitle() {
             try {
-                // Only attempt update if title has changed from default
                 if (!this.story?.title || this.story.title.trim() === '') {
                     throw new Error('Story title cannot be empty');
                 }
 
-                const response = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}`, {
+                const response = await apiFetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
                     body: JSON.stringify({
                         title: this.story.title,
-                        nodes: this.story.nodes, // Include nodes to maintain data integrity
-                        lastNodeId: this.story.lastNodeId // Include lastNodeId if it exists
+                        nodes: this.story.nodes,
+                        lastNodeId: this.story.lastNodeId
                     })
                 });
 
                 const data = await response.json();
-
                 if (!response.ok) {
                     throw new Error(data.error || 'Failed to update story title');
                 }
 
-                // Update local state to reflect changes
                 if (data.success) {
                     this.error = null;
                 }
             } catch (error) {
                 console.error('Error updating story title:', error);
                 this.error = error.message;
-                // Revert title if update failed
             }
         },
         confirmDelete() {
@@ -623,20 +757,14 @@ export default {
         },
         async deleteStory() {
             try {
-                const auth = useAuthStore();
-                const response = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...auth.authHeader
-                    }
+                const response = await apiFetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}`, {
+                    method: 'DELETE'
                 });
 
                 if (!response.ok) {
                     throw new Error('Failed to delete story');
                 }
 
-                // Redirect to story list after successful deletion
                 this.$router.push('/');
             } catch (error) {
                 console.error('Error deleting story:', error);
@@ -647,7 +775,6 @@ export default {
         handleTitleChange() {
             this.titleChanged = true;
         },
-
         async saveTitle() {
             try {
                 if (!this.story?.title || this.story.title.trim() === '') {
@@ -662,21 +789,14 @@ export default {
                 this.error = error.message;
             }
         },
-
         async updateTitle(storyId, newTitle) {
-            const auth = useAuthStore();
-            const response = await fetch(`${this.apiBaseUrl}/api/stories/${storyId}/title`, {
+            const response = await apiFetch(`${this.apiBaseUrl}/api/stories/${storyId}/title`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...auth.authHeader
-                },
                 body: JSON.stringify({ title: newTitle })
             });
 
             const data = await response.json();
             if (data.success) {
-                // Update local state with new title and prompt
                 this.story.title = data.title;
                 this.story.nodes[0].prompt = data.newPrompt;
             }
@@ -686,13 +806,8 @@ export default {
             this.publishing = true;
             this.error = null;
             try {
-                const auth = useAuthStore();
-                const response = await fetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/publish`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...auth.authHeader
-                    }
+                const response = await apiFetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/publish`, {
+                    method: 'PUT'
                 });
 
                 const data = await response.json();
@@ -713,15 +828,10 @@ export default {
         async saveChoiceText(choiceIndex, text) {
             if (!text || !text.trim()) return;
             try {
-                const auth = useAuthStore();
-                const response = await fetch(
+                const response = await apiFetch(
                     `${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${this.currentNode}/choice/${choiceIndex}`,
                     {
                         method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...auth.authHeader
-                        },
                         body: JSON.stringify({ text: text.trim() })
                     }
                 );
@@ -741,15 +851,10 @@ export default {
         async deleteChoice(choiceIndex) {
             if (!confirm("Are you sure you want to delete this choice? This will prune this choice and all downstream branching nodes!")) return;
             try {
-                const auth = useAuthStore();
-                const response = await fetch(
+                const response = await apiFetch(
                     `${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${this.currentNode}/choice/${choiceIndex}`,
                     {
-                        method: 'DELETE',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...auth.authHeader
-                        }
+                        method: 'DELETE'
                     }
                 );
 
@@ -768,15 +873,10 @@ export default {
         async addCustomChoice() {
             if (!this.newChoiceText || !this.newChoiceText.trim()) return;
             try {
-                const auth = useAuthStore();
-                const response = await fetch(
+                const response = await apiFetch(
                     `${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${this.currentNode}/choice`,
                     {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...auth.authHeader
-                        },
                         body: JSON.stringify({ text: this.newChoiceText.trim() })
                     }
                 );
@@ -792,6 +892,102 @@ export default {
             } catch (error) {
                 console.error('Error adding choice:', error);
                 this.toast.addToast('error', 'Failed to add choice');
+            }
+        },
+        // Upload Custom cover/illustration methods
+        triggerImageUpload() {
+            this.$refs.fileInput.click();
+        },
+        async handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) {
+                this.toast.addToast('error', 'Please select a valid image file');
+                return;
+            }
+            
+            this.loading = true;
+            this.error = null;
+            this.aiProgressActive = true;
+            this.aiProgressTitle = "Uploading Custom Artwork...";
+            this.aiProgressSteps = [
+                "Reading selected image file...",
+                "Encoding image to base64 format...",
+                "Uploading media content to storybook server...",
+                "Saving file allocation on disk...",
+                "Updating node cover illustration!"
+            ];
+            this.aiProgressStepIndex = 0;
+            
+            try {
+                this.aiProgressStepIndex = 1;
+                const reader = new FileReader();
+                const base64Promise = new Promise((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = error => reject(error);
+                    reader.readAsDataURL(file);
+                });
+                
+                const base64Data = await base64Promise;
+                this.aiProgressStepIndex = 2;
+                
+                const nodeIndex = this.currentNode;
+                const uploadResponse = await apiFetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${nodeIndex}/image`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ image: base64Data })
+                });
+                
+                this.aiProgressStepIndex = 3;
+                if (!uploadResponse.ok) throw new Error('Failed to upload image file');
+                
+                const data = await uploadResponse.json();
+                this.aiProgressStepIndex = 4;
+                
+                this.story.nodes[nodeIndex].image = data.imageUrl;
+                this.aiProgressStepIndex = 5;
+                this.toast.addToast('success', 'Artwork uploaded successfully!');
+            } catch (error) {
+                console.error('Image upload failed:', error);
+                this.error = error.message || 'Failed to upload artwork';
+                this.toast.addToast('error', 'Failed to upload artwork');
+            } finally {
+                this.loading = false;
+                setTimeout(() => {
+                    this.aiProgressActive = false;
+                }, 1000);
+            }
+        },
+        // AI Art Director methods
+        toggleVisualPrompt() {
+            this.editingVisualPrompt = !this.editingVisualPrompt;
+            if (this.editingVisualPrompt) {
+                const node = this.story?.nodes[this.currentNode];
+                this.editVisualPromptBuffer = node?.visualPrompt || '';
+            }
+        },
+        async saveVisualPrompt() {
+            const node = this.story?.nodes[this.currentNode];
+            if (!node) return;
+            
+            try {
+                const updatedNode = {
+                    ...node,
+                    visualPrompt: this.editVisualPromptBuffer.trim()
+                };
+                
+                const response = await apiFetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${this.currentNode}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(updatedNode)
+                });
+                
+                if (!response.ok) throw new Error('Failed to save visual style');
+                
+                this.story.nodes[this.currentNode].visualPrompt = this.editVisualPromptBuffer.trim();
+                this.editingVisualPrompt = false;
+                this.toast.addToast('success', 'Visual style overrides saved!');
+            } catch (error) {
+                console.error('Failed to save visual style:', error);
+                this.toast.addToast('error', 'Failed to save visual style');
             }
         }
     },
@@ -1198,5 +1394,197 @@ export default {
 }
 .btn-icon.btn-danger:hover {
     background: var(--danger-soft);
+}
+
+/* ── NodeGraph & Map Panel ────────────── */
+.tree-panel-outer {
+    margin-bottom: var(--space-lg);
+    padding: var(--space-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+.tree-toolbar-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px dashed var(--border);
+    padding-bottom: var(--space-xs);
+}
+.tree-view-toggle {
+    display: flex;
+    gap: var(--space-xs);
+}
+.btn-xs {
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-secondary);
+}
+.btn-xs.btn-primary {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ── AI Loading steps Console ─────────── */
+.ai-console {
+    background: #1e1e1e !important;
+    border: 1px solid #333 !important;
+    padding: var(--space-md);
+    font-family: var(--font-mono);
+    color: #e0e0e0;
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-md);
+    box-shadow: var(--shadow-md);
+}
+.console-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    border-bottom: 1px solid #333;
+    padding-bottom: var(--space-xs);
+    margin-bottom: var(--space-sm);
+}
+.console-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+}
+.console-dot.pulse {
+    animation: blink 1.2s infinite;
+}
+.console-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+}
+.console-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    font-size: 10px;
+}
+.console-line {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+    transition: opacity var(--transition-fast);
+}
+.console-line.line-done {
+    color: var(--accent);
+    opacity: 0.9;
+}
+.console-line.line-active {
+    color: #ffffff;
+    font-weight: 700;
+    opacity: 1;
+}
+.console-line.line-pending {
+    color: #555555;
+    opacity: 0.6;
+}
+.line-status {
+    width: 12px;
+    text-align: center;
+}
+.line-text {
+    flex: 1;
+}
+
+/* ── Custom Artwork Uploads ───────────── */
+.image-wrapper {
+    position: relative;
+}
+.image-overlay-actions {
+    position: absolute;
+    bottom: var(--space-sm);
+    right: var(--space-sm);
+    display: flex;
+    gap: var(--space-xs);
+}
+.img-overlay-btn {
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-secondary);
+    box-shadow: var(--shadow-sm);
+    opacity: 0.85;
+    transition: all var(--transition-fast);
+}
+.img-overlay-btn:hover {
+    opacity: 1;
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-1px);
+}
+.img-overlay-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── AI Art Director Controls ────────── */
+.art-director-section {
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin-top: var(--space-xs);
+    margin-bottom: var(--space-sm);
+    transition: all var(--transition-fast);
+}
+.art-director-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.art-director-header:hover {
+    color: var(--accent);
+}
+.toggle-icon {
+    font-size: 9px;
+    color: var(--text-muted);
+}
+.art-director-body {
+    margin-top: var(--space-sm);
+    border-top: 1px dashed var(--border-light);
+    padding-top: var(--space-sm);
+}
+.visual-prompt-form {
+    display: flex;
+    flex-direction: column;
+}
+.visual-prompt-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+.btn-xs.mt-xs {
+    margin-top: 4px;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
 }
 </style>

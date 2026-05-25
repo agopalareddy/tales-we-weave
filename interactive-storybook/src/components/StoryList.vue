@@ -5,6 +5,33 @@
       <p class="text-muted">Choose a story to continue your adventure</p>
     </div>
 
+    <!-- Explore Filters Bar -->
+    <div class="filter-bar">
+      <input
+        v-model="searchQuery"
+        type="text"
+        placeholder="Search stories by title..."
+        @input="debouncedFetch"
+        class="search-input"
+        aria-label="Search stories"
+      />
+      <select v-model="genreFilter" @change="fetchStories" class="filter-select" aria-label="Filter by genre">
+        <option value="all">All Genres</option>
+        <option value="Sci-Fi">Sci-Fi</option>
+        <option value="Fantasy">Fantasy</option>
+        <option value="Adventure">Adventure</option>
+        <option value="Mystery">Mystery</option>
+        <option value="Horror">Horror</option>
+        <option value="Romance">Romance</option>
+        <option value="Other">Other</option>
+      </select>
+      <select v-model="sortBy" @change="fetchStories" class="filter-select" aria-label="Sort order">
+        <option value="newest">Newest First</option>
+        <option value="oldest">Oldest First</option>
+        <option value="alphabetical">Alphabetical (A-Z)</option>
+      </select>
+    </div>
+
     <div v-if="loading" class="story-grid">
       <div v-for="n in 6" :key="n" class="skeleton-card card">
         <div class="skeleton skeleton-thumb"></div>
@@ -39,6 +66,7 @@ import CreateStoryCard from './CreateStoryCard.vue'
 import CreateStoryDialog from './CreateStoryDialog.vue'
 import { useAuthStore } from '@/stores/useAuth.js'
 import { useToast } from '@/stores/useToast.js'
+import { apiFetch } from '@/utils/api.js'
 
 export default {
   name: 'StoryList',
@@ -50,7 +78,11 @@ export default {
       loading: true,
       error: null,
       creating: false,
-      showCreateDialog: false
+      showCreateDialog: false,
+      searchQuery: '',
+      genreFilter: 'all',
+      sortBy: 'newest',
+      debounceTimer: null
     }
   },
   async mounted() {
@@ -62,7 +94,13 @@ export default {
       this.loading = true
       this.error = null
       try {
-        const res = await fetch(this.apiBaseUrl + '/api/stories')
+        const params = new URLSearchParams()
+        if (this.searchQuery.trim()) params.append('search', this.searchQuery.trim())
+        if (this.genreFilter && this.genreFilter !== 'all') params.append('genre', this.genreFilter)
+        if (this.sortBy) params.append('sort', this.sortBy)
+        
+        const queryString = params.toString() ? '?' + params.toString() : ''
+        const res = await apiFetch(this.apiBaseUrl + '/api/stories' + queryString)
         if (!res.ok) throw new Error('Failed to load stories')
         this.stories = await res.json()
       } catch (e) {
@@ -71,6 +109,12 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    debouncedFetch() {
+      clearTimeout(this.debounceTimer)
+      this.debounceTimer = setTimeout(() => {
+        this.fetchStories()
+      }, 300)
     },
     createNewStory() {
       const auth = useAuthStore()
@@ -91,8 +135,44 @@ export default {
 
 <style scoped>
 .story-list { max-width: 1200px; margin: 0 auto; }
-.list-header { margin-bottom: var(--space-xl); }
+.list-header { margin-bottom: var(--space-lg); }
 .list-header h1 { font-size: var(--text-3xl); margin-bottom: var(--space-xs); }
+.filter-bar {
+  display: flex;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+  flex-wrap: wrap;
+}
+.search-input {
+  flex: 1;
+  min-width: 240px;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  transition: border-color var(--transition-fast);
+}
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.filter-select {
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+.filter-select:focus {
+  border-color: var(--accent);
+}
 .story-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

@@ -15,6 +15,37 @@
             class="title-input"
           />
         </div>
+        <div class="form-group">
+          <label>Genre</label>
+          <select v-model="genre" class="title-input" style="font-size: var(--text-sm);">
+            <option value="Adventure">Adventure</option>
+            <option value="Sci-Fi">Sci-Fi</option>
+            <option value="Fantasy">Fantasy</option>
+            <option value="Adventure">Adventure</option>
+            <option value="Mystery">Mystery</option>
+            <option value="Horror">Horror</option>
+            <option value="Romance">Romance</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Synopsis (Description)</label>
+          <textarea
+            v-model="description"
+            placeholder="Briefly describe what this story is about..."
+            rows="2"
+            class="prompt-input"
+          ></textarea>
+        </div>
+        <div class="form-group">
+          <label>Tags (Comma separated)</label>
+          <input
+            v-model="tagsInput"
+            placeholder="magic, spaceships, mystery, dynamic..."
+            class="title-input"
+            style="font-size: var(--text-sm);"
+          />
+        </div>
         <div class="modal-actions">
           <button class="btn btn-secondary" @click="cancel">Cancel</button>
           <button class="btn btn-primary" @click="proceedFromTitle" :disabled="!title.trim()">
@@ -102,6 +133,7 @@
 <script>
 import { useAuthStore } from '@/stores/useAuth.js'
 import { useToast } from '@/stores/useToast.js'
+import { apiFetch } from '@/utils/api.js'
 
 export default {
   name: 'CreateStoryDialog',
@@ -115,7 +147,10 @@ export default {
       selectedSuggestion: null,
       generating: false,
       creating: false,
-      progress: 0
+      progress: 0,
+      genre: 'Adventure',
+      description: '',
+      tagsInput: ''
     }
   },
   computed: {
@@ -135,9 +170,8 @@ export default {
       if (!this.title.trim()) return
       this.generating = true
       try {
-        const res = await fetch('/api/generate-prompt', {
+        const res = await apiFetch('/api/generate-prompt', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title: this.title.trim() })
         })
         if (!res.ok) throw new Error('Failed to generate')
@@ -172,33 +206,31 @@ export default {
         const auth = useAuthStore()
         const toast = useToast()
 
+        const tags = this.tagsInput.split(',')
+          .map(t => t.trim())
+          .filter(t => t.length > 0)
+
         // Step A: Create the story
         this.progress = 0
-        const storyRes = await fetch('/api/stories', {
+        const storyRes = await apiFetch('/api/stories', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...auth.authHeader },
           body: JSON.stringify({
             title: this.title.trim(),
+            genre: this.genre,
+            description: this.description.trim(),
+            tags: tags,
             nodes: [{ prompt, choices: [], image: '' }],
             lastNodeId: 0
           })
         })
-        if (storyRes.status === 401) {
-          auth.clearAuth()
-          toast.addToast('error', 'Please log in again')
-          this.step = 1
-          this.creating = false
-          return
-        }
         if (!storyRes.ok) throw new Error('Failed to create story')
         const storyData = await storyRes.json()
         const storyId = storyData.insertedId || storyData._id
         this.progress = 1
-
+ 
         // Step B: Generate image for node 0
-        const imgRes = await fetch('/api/generate-image', {
+        const imgRes = await apiFetch('/api/generate-image', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt,
             storyId: storyId,
@@ -208,9 +240,8 @@ export default {
         if (imgRes.ok) {
           const imgData = await imgRes.json()
           if (imgData.imageUrl) {
-            await fetch(`/api/stories/${storyId}/node/0/image`, {
+            await apiFetch(`/api/stories/${storyId}/node/0/image`, {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ image: imgData.imageUrl })
             })
           }

@@ -26,6 +26,7 @@ import { useAuthStore } from '@/stores/useAuth.js'
 import StoryCard from '@/components/StoryCard.vue'
 import CreateStoryCard from '@/components/CreateStoryCard.vue'
 import CreateStoryDialog from '@/components/CreateStoryDialog.vue'
+import { apiFetch } from '@/utils/api.js'
 
 export default {
   name: 'MyStoriesView',
@@ -51,15 +52,7 @@ export default {
       this.loading = true
       this.error = null
       try {
-        const auth = useAuthStore()
-        const res = await fetch('/api/my-stories', {
-          headers: { ...auth.authHeader }
-        })
-        if (res.status === 401) {
-          auth.clearAuth()
-          this.$router.push('/login')
-          return
-        }
+        const res = await apiFetch('/api/my-stories')
         if (!res.ok) throw new Error('Failed to fetch stories')
         this.stories = await res.json()
       } catch (e) {

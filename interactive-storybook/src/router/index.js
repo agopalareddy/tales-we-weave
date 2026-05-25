@@ -13,6 +13,10 @@ const routes = [
     path: "/my-stories",
     component: () => import("../views/MyStories.vue"),
   },
+  {
+    path: "/profile",
+    component: () => import("../views/Profile.vue"),
+  },
 ];
 
 const router = createRouter({

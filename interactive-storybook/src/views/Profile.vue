@@ -80,6 +80,39 @@
           </button>
         </form>
       </div>
+
+      <!-- Danger Zone Card -->
+      <div class="card danger-card">
+        <h3>Danger Zone</h3>
+        <p class="text-muted text-sm mb-md">Permanently delete your account. This action is irreversible and will purge all stories, choices, and images you have created.</p>
+        <button @click="showDeleteAccountModal = true" class="btn btn-danger">
+          Delete Account...
+        </button>
+      </div>
+    </div>
+
+    <!-- Delete Account typing confirmation modal -->
+    <div v-if="showDeleteAccountModal" class="delete-account-overlay" @click.self="cancelDeleteAccount">
+      <div class="delete-account-modal">
+        <h3>Delete your account?</h3>
+        <p class="warning-text">⚠️ This action is highly critical and irreversible!</p>
+        <p class="text-muted text-sm mb-md">All your authored stories, nodes, and uploaded images will be permanently erased from disk and database. Please type <strong>delete my account</strong> below to confirm.</p>
+        <div class="form-group mb-md">
+          <input
+            v-model="deleteConfirmInput"
+            placeholder="Type 'delete my account'..."
+            class="profile-input"
+            @keyup.enter="deleteAccount"
+          />
+        </div>
+        <div v-if="deleteError" class="error-message mb-md">{{ deleteError }}</div>
+        <div class="modal-actions">
+          <button @click="deleteAccount" class="btn btn-danger" :disabled="deleteConfirmInput !== 'delete my account' || deleting">
+            {{ deleting ? 'Deleting...' : 'Permanently Delete Account' }}
+          </button>
+          <button @click="cancelDeleteAccount" class="btn btn-ghost" :disabled="deleting">Cancel</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -103,7 +136,11 @@ export default {
       newPassword: '',
       confirmPassword: '',
       saving: false,
-      error: null
+      error: null,
+      showDeleteAccountModal: false,
+      deleteConfirmInput: '',
+      deleting: false,
+      deleteError: null
     }
   },
   created() {
@@ -166,6 +203,33 @@ export default {
         day: 'numeric',
         year: 'numeric'
       })
+    },
+    cancelDeleteAccount() {
+      this.showDeleteAccountModal = false
+      this.deleteConfirmInput = ''
+      this.deleteError = null
+    },
+    async deleteAccount() {
+      if (this.deleteConfirmInput !== 'delete my account') return
+      this.deleting = true
+      this.deleteError = null
+      try {
+        const res = await apiFetch('/api/users/me', {
+          method: 'DELETE'
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed to delete account')
+
+        this.toast.addToast('success', 'Your account has been permanently deleted.')
+        this.cancelDeleteAccount()
+        this.auth.logout() // Automatically logs out and routes to home
+      } catch (e) {
+        console.error('Delete account error:', e)
+        this.deleteError = e.message
+        this.toast.addToast('error', 'Failed to delete account')
+      } finally {
+        this.deleting = false
+      }
     }
   }
 }
@@ -296,4 +360,70 @@ export default {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .mb-md { margin-bottom: var(--space-md); }
+
+/* Danger Zone Styles */
+.danger-card {
+  padding: var(--space-xl);
+  border: 1px solid var(--danger) !important;
+  background: var(--bg-card);
+}
+.danger-card h3 {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin-bottom: var(--space-md);
+  border-bottom: 1px solid var(--danger);
+  padding-bottom: var(--space-xs);
+  color: var(--danger);
+}
+
+/* Delete Account modal overlay */
+.delete-account-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(15, 17, 23, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-md);
+  animation: fadeIn var(--transition-normal);
+}
+.delete-account-modal {
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  width: 100%;
+  max-width: 500px;
+  box-shadow: var(--shadow-xl);
+  padding: var(--space-2xl);
+  border: 1px solid var(--border);
+  animation: slideUp var(--transition-normal);
+}
+.warning-text {
+  color: var(--danger);
+  font-weight: 700;
+  font-size: var(--text-md);
+  margin-bottom: var(--space-sm);
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+}
+.error-message {
+  color: var(--danger);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { transform: translateY(15px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
 </style>

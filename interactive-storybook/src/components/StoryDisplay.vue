@@ -113,6 +113,7 @@
                 <div v-if="!editingPrompt" class="prompt-display">
                     <p class="prompt-text">{{ story.nodes[currentNode]?.prompt || 'Loading node...' }}</p>
                     <button v-if="isOwner" @click="toggleEditPrompt" class="btn-edit-prompt" title="Edit prompt">✎</button>
+                    <button v-if="isOwner" @click="confirmDeleteNode" class="btn-delete-node" :title="currentNode === 0 ? 'Delete entire story' : 'Delete scene'">🗑️</button>
                 </div>
                 <div v-else class="prompt-edit">
                     <textarea v-model="editPromptBuffer" class="prompt-textarea" rows="3"></textarea>
@@ -274,6 +275,39 @@
                 </div>
             </div>
         </div>
+
+        <!-- Delete Node confirmation modal -->
+        <div v-if="showDeleteNodeConfirm" class="delete-modal">
+            <div class="delete-modal-content" :class="{ 'danger-highlight': currentNode === 0 }">
+                <h3 v-if="currentNode === 0" class="danger-title">⚠️ Delete Entire Story?</h3>
+                <h3 v-else>Delete Scene?</h3>
+                
+                <div v-if="currentNode === 0" class="danger-warning">
+                    <p class="critical-text"><strong>CRITICAL WARNING:</strong> You are deleting the <strong>Root Node (Scene 0)</strong>.</p>
+                    <p>Deleting the root scene will recursively purge all downstream choices, nodes, and custom images, resulting in the **complete and permanent deletion of the entire story** from database and disk!</p>
+                    <p class="type-instruction">Please type <strong>delete entire story</strong> below to execute this action.</p>
+                    <input
+                        v-model="deleteRootConfirmInput"
+                        placeholder="Type 'delete entire story'..."
+                        class="title-input danger-input mb-md"
+                    />
+                </div>
+                <div v-else>
+                    <p>Are you sure you want to delete this scene? <strong>All subsequent choices and branches branching from this scene (and their images on disk) will be recursively deleted permanently.</strong> This action is irreversible.</p>
+                </div>
+
+                <div class="delete-modal-actions">
+                    <button 
+                        @click="deleteNode" 
+                        class="btn btn-danger" 
+                        :disabled="deletingNode || (currentNode === 0 && deleteRootConfirmInput !== 'delete entire story')"
+                    >
+                        {{ deletingNode ? 'Deleting...' : (currentNode === 0 ? 'Yes, Delete Entire Story' : 'Delete Scene') }}
+                    </button>
+                    <button @click="cancelDeleteNode" class="btn btn-ghost" :disabled="deletingNode">Cancel</button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -299,6 +333,9 @@ export default {
             loading: false,
             apiBaseUrl: '',
             showDeleteConfirm: false,
+            showDeleteNodeConfirm: false,
+            deletingNode: false,
+            deleteRootConfirmInput: '',
             regeneratingChoices: false,
             storyLoading: false,
             storyError: null,
@@ -770,6 +807,56 @@ export default {
                 console.error('Error deleting story:', error);
             } finally {
                 this.showDeleteConfirm = false;
+            }
+        },
+        confirmDeleteNode() {
+            this.showDeleteNodeConfirm = true;
+            this.deleteRootConfirmInput = '';
+        },
+        cancelDeleteNode() {
+            this.showDeleteNodeConfirm = false;
+            this.deleteRootConfirmInput = '';
+        },
+        async deleteNode() {
+            if (this.currentNode === 0 && this.deleteRootConfirmInput !== 'delete entire story') {
+                return;
+            }
+            this.deletingNode = true;
+            try {
+                const response = await apiFetch(`${this.apiBaseUrl}/api/stories/${this.$route.params.id}/node/${this.currentNode}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to delete scene');
+                }
+
+                const data = await response.json();
+                
+                if (data.storyDeleted) {
+                    useToast().addToast('success', 'Story successfully deleted');
+                    this.showDeleteNodeConfirm = false;
+                    this.$router.push('/');
+                } else {
+                    useToast().addToast('success', 'Scene and its branches successfully deleted');
+                    
+                    // Redirect user back to the deleted node's parent, or 0 if none
+                    const parent = data.parentNodeId;
+                    const nextNode = parent !== null && parent !== undefined ? parent : 0;
+                    
+                    this.showDeleteNodeConfirm = false;
+                    this.currentNode = nextNode;
+                    this.$router.replace({ query: { node: nextNode } });
+                    
+                    // Reload story payload to update the svg map and nodes array
+                    await this.fetchStory();
+                }
+            } catch (error) {
+                console.error('Error deleting scene node:', error);
+                useToast().addToast('error', error.message || 'Failed to delete scene');
+            } finally {
+                this.deletingNode = false;
             }
         },
         handleTitleChange() {
@@ -1282,6 +1369,54 @@ export default {
     transition: all var(--transition-fast);
 }
 .delete-btn:hover { background: var(--danger); color: var(--text-inverse); }
+
+.btn-delete-node {
+    padding: 2px var(--space-sm);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+    flex-shrink: 0;
+    margin-left: 4px;
+}
+.btn-delete-node:hover {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+/* Danger highlights for root node deletion modal */
+.danger-highlight {
+    border: 2px solid var(--danger) !important;
+    max-width: 500px !important;
+}
+.danger-title {
+    color: var(--danger) !important;
+    font-weight: 800;
+}
+.danger-warning {
+    text-align: left;
+    margin: var(--space-md) 0;
+}
+.critical-text {
+    color: var(--danger);
+    font-size: var(--text-md);
+    margin-bottom: var(--space-xs);
+}
+.type-instruction {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: var(--space-md) 0 var(--space-xs) 0;
+}
+.danger-input {
+    border-color: var(--danger) !important;
+}
+.danger-input:focus {
+    box-shadow: 0 0 0 3px var(--danger-soft) !important;
+}
 
 /* ── Delete Modal ──────────────────────── */
 .delete-modal {

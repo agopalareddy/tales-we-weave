@@ -222,7 +222,21 @@ async function connectToDatabase() {
       process.exit();
     });
   });
+function deleteNodeImageFile(imageUrl) {
+  if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.startsWith("/api/uploads/")) {
+    return;
   }
+  const filename = imageUrl.replace("/api/uploads/", "");
+  const filePath = path.join(__dirname, "../uploads", filename);
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`Successfully deleted custom upload image file: ${filePath}`);
+    }
+  } catch (error) {
+    console.error(`Error deleting image file ${filePath}:`, error);
+  }
+}
 
 // Move route setup to separate function
 function setupRoutes() {
@@ -446,11 +460,111 @@ function setupRoutes() {
         if (story.userId !== req.user._id.toString()) {
           return res.status(403).json({ error: "You are not authorized to delete this story" });
         }
+        if (story.nodes && Array.isArray(story.nodes)) {
+          story.nodes.forEach(node => {
+            if (node && node.image) {
+              deleteNodeImageFile(node.image);
+            }
+          });
+        }
         const result = await storiesCollection.deleteOne({ _id: id });
         res.json(result);
       } catch (error) {
         console.error("Error deleting story:", error);
         res.status(500).json({ error: "Failed to delete story" });
+      }
+    });
+
+    // Delete a specific node and cascade delete its descendants
+    app.delete("/api/stories/:id/node/:nodeIndex", authenticateUser, async (req, res) => {
+      try {
+        const id = new ObjectId(req.params.id);
+        const story = await storiesCollection.findOne({ _id: id });
+        if (!story) {
+          return res.status(404).json({ error: "Story not found" });
+        }
+        if (story.userId !== req.user._id.toString()) {
+          return res.status(403).json({ error: "You are not authorized to update this story" });
+        }
+
+        const nodeIndex = parseInt(req.params.nodeIndex);
+        if (isNaN(nodeIndex) || nodeIndex < 0 || !story.nodes || !story.nodes[nodeIndex]) {
+          return res.status(400).json({ error: "Invalid node index" });
+        }
+
+        // Intelligently handle deleting root node (Node 0)
+        // Deleting the root node deletes the entire story!
+        if (nodeIndex === 0) {
+          console.log(`Root node deletion requested for story ${id}. Performing full story purge.`);
+          // Delete all uploaded images first
+          if (story.nodes && Array.isArray(story.nodes)) {
+            story.nodes.forEach(node => {
+              if (node && node.image) {
+                deleteNodeImageFile(node.image);
+              }
+            });
+          }
+          await storiesCollection.deleteOne({ _id: id });
+          return res.json({ success: true, storyDeleted: true });
+        }
+
+        // Cascading deletion: find all descendant indices
+        const indicesToDelete = new Set([nodeIndex]);
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (let i = 0; i < story.nodes.length; i++) {
+            const node = story.nodes[i];
+            if (node && !indicesToDelete.has(i)) {
+              if (indicesToDelete.has(node.parentNodeId)) {
+                indicesToDelete.add(i);
+                changed = true;
+              }
+            }
+          }
+        }
+
+        // Clean up disk storage of any custom image uploads linked to the deleted nodes
+        indicesToDelete.forEach(idx => {
+          const node = story.nodes[idx];
+          if (node && node.image) {
+            deleteNodeImageFile(node.image);
+          }
+        });
+
+        // Break parent connection links in parent node's choices array
+        const parentNodeId = story.nodes[nodeIndex].parentNodeId;
+        const updates = {};
+
+        // Sparse array clearing (soft delete of nodes to prevent index shifts)
+        indicesToDelete.forEach(idx => {
+          updates[`nodes.${idx}`] = null;
+        });
+
+        // Update the parent's choices if parent node is valid
+        if (parentNodeId !== null && parentNodeId !== undefined && story.nodes[parentNodeId]) {
+          const parentNode = story.nodes[parentNodeId];
+          if (parentNode.choices && Array.isArray(parentNode.choices)) {
+            const filteredChoices = parentNode.choices.filter(choice => choice.nextNodeId !== nodeIndex);
+            updates[`nodes.${parentNodeId}.choices`] = filteredChoices;
+          }
+        }
+
+        const result = await storiesCollection.updateOne(
+          { _id: id },
+          { $set: updates }
+        );
+
+        res.json({
+          success: true,
+          storyDeleted: false,
+          deletedIndices: Array.from(indicesToDelete),
+          parentNodeId,
+          result
+        });
+      } catch (error) {
+        console.error("Error deleting story node:", error);
+        res.status(500).json({ error: "Failed to delete scene node" });
       }
     });
     // Update image for a specific node in a story
@@ -744,8 +858,41 @@ function setupRoutes() {
       } catch (error) {
         console.error("Error updating profile:", error);
         res.status(500).json({ error: "Failed to update profile" });
+    // Delete current user account and all their authored stories/custom images
+    app.delete("/api/users/me", authenticateUser, async (req, res) => {
+      try {
+        const userIdStr = req.user._id.toString();
+
+        // 1. Fetch all stories authored by this user to clean up custom uploaded images from disk
+        const userStories = await storiesCollection.find({ userId: userIdStr }).toArray();
+        for (const story of userStories) {
+          if (story.nodes && Array.isArray(story.nodes)) {
+            for (const node of story.nodes) {
+              if (node && node.image) {
+                deleteNodeImageFile(node.image);
+              }
+            }
+          }
+        }
+
+        // 2. Delete all stories from database
+        const deleteStoriesResult = await storiesCollection.deleteMany({ userId: userIdStr });
+        console.log(`Deleted ${deleteStoriesResult.deletedCount} stories and custom images for user ${req.user.username}`);
+
+        // 3. Delete the user document itself
+        const deleteUserResult = await usersCollection.deleteOne({ _id: req.user._id });
+
+        if (deleteUserResult.deletedCount === 0) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json({ success: true, message: "Account and all associated stories/images successfully purged" });
+      } catch (error) {
+        console.error("Error deleting user account:", error);
+        res.status(500).json({ error: "Failed to delete account" });
       }
     });
+
     // Image generation endpoint (uses fal.ai flux/schnell)
     app.post("/api/generate-image", async (req, res) => {
       if (!req.body || !req.body.prompt) {

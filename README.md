@@ -1,4 +1,4 @@
-# Interactive Storybook 🚀 
+# Tales We Weave — AI-Powered Branching Storybook 📖✨
 
 [![Course](https://img.shields.io/badge/WUSTL-CSE%20503S-blue.svg)](https://cse.wustl.edu/)
 [![Framework](https://img.shields.io/badge/Vue.js-3.x-emerald.svg)](https://vuejs.org/)
@@ -12,7 +12,19 @@
 
 ---
 
-## 📦 Features
+## 📌 Table of Contents
+
+- [🌟 Key Features](#-key-features)
+- [🛠️ Tech Stack & Architecture](#️-tech-stack--architecture)
+- [⚙️ Setup & Local Installation](#-setup--local-installation)
+- [🚀 Run & Quick Start](#-run--quick-start)
+- [🛡️ Security & Architecture Best Practices](#️-security--architecture-best-practices)
+- [🤝 Contributing & Support](#-contributing--support)
+- [📄 License](#-license)
+
+---
+
+## 🌟 Key Features
 
 - **🌳 Interactive SVG Narrative Node Graph:** A custom-engineered, zoomable, and pannable visual representation of your story tree. Nodes glow to show your active path and color-code dynamically based on visited vs unexplored branches.
 - **🎨 AI Art Director Visual Styles:** Authors can expand a dedicated visual prompt panel to save styles (e.g. *Ghibli anime style, oil painting, volumetric lighting*) which seamlessly dictate fal.ai Schnell parameters to produce themed illustrations.
@@ -25,65 +37,20 @@
 
 ---
 
-## 🛠️ Installation & Requirements
+## 🛠️ Tech Stack & Architecture
 
-### Prerequisites
-* **Node.js** >= 18.x
-* **pnpm** >= 10.x (install via `npm install -g pnpm@10` or `corepack enable pnpm`)
-* **MongoDB** (Atlas cluster or local service running on port `27017`)
-* **Google Gemini API Key** (for choice/prompt logic)
-* **fal.ai Key** (for Flux Schnell artwork generation)
+### Technology Stack
+- **Frontend Core**: Vue.js 3 (Composition API, Pinia State Management, Vue Router)
+- **Backend API**: Node.js & Express (Dynamic routing, REST controllers, JWT-free session middleware)
+- **Database Engine**: MongoDB (Mongoose ODM, sparse array story models)
+- **AI Integrations**: Google Gemini Flash-lite (Prompt expansion, branching choices generation) & fal.ai (Flux Schnell high-fidelity image rendering)
+- **Styling System**: Vanilla CSS Variables (Aesthetic dual-theme system, responsive layouts)
 
-### Copy-Pasteable Installation
-Clone the repository and install the standard dependencies:
-```bash
-# Clone the repository
-git clone https://github.com/agopalareddy/tales-we-weave.git
-cd tales-we-weave/interactive-storybook
-
-# Install dependencies
-pnpm install
-```
-
-### Environment Configuration
-Create a `.env` configuration file in `/interactive-storybook/` directory:
-```bash
-cp config.env.example .env
-```
-Fill in your credentials inside `.env`:
-```env
-MONGO_URI=your_mongodb_connection_string
-GOOGLE_API_KEY=your_gemini_api_key
-FAL_KEY=your_fal_ai_api_key
-VUE_APP_PORT=8000
-```
-
----
-
-## 🚀 Quick Start / Usage
-
-Start both the Express backend API and the Vue CLI development server concurrently using a single command:
-```bash
-pnpm run serve
-```
-
-The system will initialize:
-* **Backend API server** listening on port `8000` (establishing database connections)
-* **Vue CLI dev server** compiling assets and opening the browser on `http://localhost:8080/storybook/`
-
-For production builds:
-```bash
-pnpm run build
-```
-
----
-
-## 📁 Repository Structure
-
+### Directory Structure
 ```
 interactive-storybook/
 ├── server/
-│   ├── index.js           # Core Express server & API endpoints (DB connection, JWT soft-auth)
+│   ├── index.js           # Core Express server & API endpoints (DB connection, session auth)
 │   └── gemini.js          # Gemini Flash-lite integration prompt models
 ├── src/
 │   ├── main.js            # Vue App initialization + Pinia registration + Router hooks
@@ -111,16 +78,73 @@ interactive-storybook/
 
 ---
 
-## 🤝 Contributing & License
+## ⚙️ Setup & Local Installation
 
-### Contributions
-This repository is primarily developed as part of **CSE 503S: Rapid Prototyping and Creative Programming** at Washington University in St. Louis. Pull requests and feature upgrades are welcome! Please open a GitHub Issue to outline your changes before making submissions.
+### Prerequisites
+* **Node.js** >= 18.x
+* **pnpm** >= 10.x (install globally via `npm install -g pnpm@10` or `corepack enable pnpm`)
+* **MongoDB** (Local instance running on `27017` or a MongoDB Atlas Cluster connection URI)
 
-### License
-Distributed under the **MIT License**. See `LICENSE` for more information.
+### Installation
+1. **Clone the Repository & Install Dependencies**:
+   ```bash
+   git clone https://github.com/agopalareddy/tales-we-weave.git
+   cd tales-we-weave/interactive-storybook
+   pnpm install
+   ```
+
+2. **Configure Environment Variables**:
+   Create a `.env` configuration file in `/interactive-storybook/` directory:
+   ```bash
+   cp config.env.example .env
+   ```
+   Open the `.env` file and input your credentials:
+   ```env
+   MONGO_URI=your_mongodb_connection_string
+   GOOGLE_API_KEY=your_gemini_api_key
+   FAL_KEY=your_fal_ai_api_key
+   VUE_APP_PORT=8000
+   ```
 
 ---
 
-## 📬 Support & Status
-* **Project Status:** Production Ready / Active
-* **Support Channel:** Open a [GitHub Issue](https://github.com/agopalareddy/tales-we-weave/issues) for any bug reports or visual enhancement requests.
+## 🚀 Run & Quick Start
+
+Start both the Express API backend and Vue CLI development server concurrently:
+```bash
+pnpm run serve
+```
+
+This starts:
+- **Backend API Server** listening on port `8000` (connecting to your MongoDB instance)
+- **Vue CLI dev server** compiling UI assets and serving on `http://localhost:8080/storybook/`
+
+To generate a compiled static production build:
+```bash
+pnpm run build
+```
+
+---
+
+## 🛡️ Security & Architecture Best Practices
+
+1. **Auth & Sessions**: Bearer-token-based authorization secures story mutation and creation. Secure cryptographic tokens are created via `crypto.randomBytes` on login.
+2. **MongoDB Sparse Array story models**: Uses highly efficient array index padding (`nodes[nodeIndex]`) to handle extensive sparse tree nodes representation.
+3. **Casacading Tree Deletions**: Deleting nodes triggers elegant recursive purges of disconnected sub-branches to prevent orphan node bloat.
+4. **GDPR Purge Controls**: Built-in "Danger Zone" functions on user profiles guarantee absolute removal of user credentials, personal stories, and uploaded files.
+
+---
+
+## 🤝 Contributing & Support
+
+### Contributions
+This repository is developed as part of the **CSE 503S: Rapid Prototyping and Creative Programming** course at Washington University in St. Louis. Pull requests are welcome! Please open an issue to outline proposed changes before submitting a PR.
+
+### Support
+If you encounter any visual bugs or functional anomalies, please open a [GitHub Issue](https://github.com/agopalareddy/tales-we-weave/issues).
+
+---
+
+## 📄 License
+
+Distributed under the **MIT License**. See `LICENSE` for details.

@@ -38,8 +38,8 @@
 Clone the repository and install the standard dependencies:
 ```bash
 # Clone the repository
-git clone https://github.com/agopalareddy/CSE503S_Interactive_Storybook.git
-cd CSE503S_Interactive_Storybook/interactive-storybook
+git clone https://github.com/agopalareddy/tales-we-weave.git
+cd tales-we-weave/interactive-storybook
 
 # Install dependencies
 pnpm install
@@ -123,4 +123,4 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ## 📬 Support & Status
 * **Project Status:** Production Ready / Active
-* **Support Channel:** Open a [GitHub Issue](https://github.com/agopalareddy/CSE503S_Interactive_Storybook/issues) for any bug reports or visual enhancement requests.
+* **Support Channel:** Open a [GitHub Issue](https://github.com/agopalareddy/tales-we-weave/issues) for any bug reports or visual enhancement requests.

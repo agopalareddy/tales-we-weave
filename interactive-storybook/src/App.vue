@@ -15,7 +15,17 @@
         </span>
         <button class="theme-toggle-btn" @click="toggleTheme" :title="'Theme Mode: ' + themeMode">
           <!-- Light Mode Icon (Sun) -->
-          <svg v-if="themeMode === 'light'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="theme-icon">
+          <svg
+            v-if="themeMode === 'light'"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="theme-icon"
+          >
             <circle cx="12" cy="12" r="5"></circle>
             <line x1="12" y1="1" x2="12" y2="3"></line>
             <line x1="12" y1="21" x2="12" y2="23"></line>
@@ -27,11 +37,31 @@
             <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
           </svg>
           <!-- Dark Mode Icon (Moon) -->
-          <svg v-else-if="themeMode === 'dark'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="theme-icon">
+          <svg
+            v-else-if="themeMode === 'dark'"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="theme-icon"
+          >
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
           </svg>
           <!-- System Mode Icon (Monitor) -->
-          <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="theme-icon">
+          <svg
+            v-else
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="theme-icon"
+          >
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
             <line x1="8" y1="21" x2="16" y2="21"></line>
             <line x1="12" y1="17" x2="12" y2="21"></line>
@@ -50,60 +80,59 @@
 </template>
 
 <script>
-
-import ToastContainer from './components/ToastContainer.vue'
-import { useAuthStore } from '@/stores/useAuth.js'
-import { ref, onMounted } from 'vue'
+import ToastContainer from './components/ToastContainer.vue';
+import { useAuthStore } from '@/stores/useAuth.js';
+import { ref, onMounted } from 'vue';
 
 export default {
   name: 'App',
   components: { ToastContainer },
   setup() {
-    const auth = useAuthStore()
-    const themeMode = ref(localStorage.getItem('storybook_theme_mode') || 'system')
-    const activeClass = ref('theme-light')
+    const auth = useAuthStore();
+    const themeMode = ref(localStorage.getItem('storybook_theme_mode') || 'system');
+    const activeClass = ref('theme-light');
 
     const updateAppliedTheme = () => {
       if (themeMode.value === 'system') {
-        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-        activeClass.value = systemPrefersDark ? 'theme-dark' : 'theme-light'
+        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        activeClass.value = systemPrefersDark ? 'theme-dark' : 'theme-light';
       } else {
-        activeClass.value = themeMode.value === 'light' ? 'theme-light' : 'theme-dark'
+        activeClass.value = themeMode.value === 'light' ? 'theme-light' : 'theme-dark';
       }
-    }
+    };
 
     const toggleTheme = () => {
       if (themeMode.value === 'system') {
-        themeMode.value = 'light'
+        themeMode.value = 'light';
       } else if (themeMode.value === 'light') {
-        themeMode.value = 'dark'
+        themeMode.value = 'dark';
       } else {
-        themeMode.value = 'system'
+        themeMode.value = 'system';
       }
-      localStorage.setItem('storybook_theme_mode', themeMode.value)
-      updateAppliedTheme()
-    }
+      localStorage.setItem('storybook_theme_mode', themeMode.value);
+      updateAppliedTheme();
+    };
 
     onMounted(() => {
-      updateAppliedTheme()
-      
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+      updateAppliedTheme();
+
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const listener = () => {
         if (themeMode.value === 'system') {
-          updateAppliedTheme()
+          updateAppliedTheme();
         }
-      }
-      
-      if (mediaQuery.addEventListener) {
-        mediaQuery.addEventListener('change', listener)
-      } else {
-        mediaQuery.addListener(listener)
-      }
-    })
+      };
 
-    return { auth, themeMode, activeClass, toggleTheme }
-  }
-}
+      if (mediaQuery.addEventListener) {
+        mediaQuery.addEventListener('change', listener);
+      } else {
+        mediaQuery.addListener(listener);
+      }
+    });
+
+    return { auth, themeMode, activeClass, toggleTheme };
+  },
+};
 </script>
 
 <style scoped>
@@ -113,7 +142,9 @@ export default {
   min-height: 100vh;
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  transition: background-color var(--transition-normal), color var(--transition-normal);
+  transition:
+    background-color var(--transition-normal),
+    color var(--transition-normal);
 }
 .app-header {
   display: flex;
@@ -123,7 +154,9 @@ export default {
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
-  transition: background-color var(--transition-normal), border-color var(--transition-normal);
+  transition:
+    background-color var(--transition-normal),
+    border-color var(--transition-normal);
 }
 .app-header .logo {
   font-size: var(--text-lg);
@@ -143,7 +176,8 @@ export default {
   font-weight: 500;
   transition: color var(--transition-fast);
 }
-.nav-links a:hover, .nav-links a.router-link-exact-active {
+.nav-links a:hover,
+.nav-links a.router-link-exact-active {
   color: var(--accent);
 }
 .user-info {
@@ -176,7 +210,9 @@ export default {
   justify-content: center;
   padding: var(--space-xs) var(--space-sm);
   border-radius: var(--radius-md);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
   height: 32px;
   gap: var(--space-xs);
 }

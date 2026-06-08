@@ -9,8 +9,8 @@
       </div>
     </div>
 
-    <svg 
-      class="graph-svg" 
+    <svg
+      class="graph-svg"
       ref="svgCanvas"
       @mousedown="startPan"
       @mousemove="pan"
@@ -22,82 +22,90 @@
       <!-- Definitions for markers and glows -->
       <defs>
         <!-- Arrowhead markers -->
-        <marker 
-          id="arrow" 
-          viewBox="0 0 10 10" 
-          refX="18" 
-          refY="5" 
-          markerWidth="6" 
-          markerHeight="6" 
+        <marker
+          id="arrow"
+          viewBox="0 0 10 10"
+          refX="18"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
           orient="auto-start-reverse"
         >
           <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--border)" />
         </marker>
-        <marker 
-          id="arrow-active" 
-          viewBox="0 0 10 10" 
-          refX="18" 
-          refY="5" 
-          markerWidth="6" 
-          markerHeight="6" 
+        <marker
+          id="arrow-active"
+          viewBox="0 0 10 10"
+          refX="18"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
           orient="auto-start-reverse"
         >
           <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)" />
         </marker>
-        
+
         <!-- Drop Shadow Filters -->
         <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.1" />
         </filter>
         <filter id="accent-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="var(--accent)" flood-opacity="0.4" />
+          <feDropShadow
+            dx="0"
+            dy="0"
+            stdDeviation="4"
+            flood-color="var(--accent)"
+            flood-opacity="0.4"
+          />
         </filter>
       </defs>
 
       <!-- Grid Background (optional for aesthetic grounding) -->
       <g :transform="'translate(' + panX + ',' + panY + ') scale(' + zoomScale + ')'">
         <!-- Connecting Edges (Bezier paths) -->
-        <path 
-          v-for="edge in layoutEdges" 
-          :key="edge.id" 
-          :d="edge.path" 
+        <path
+          v-for="edge in layoutEdges"
+          :key="edge.id"
+          :d="edge.path"
           class="graph-edge"
-          :class="{ 
+          :class="{
             'edge-visited': visitedNodes.has(edge.source) && visitedNodes.has(edge.target),
-            'edge-active': edge.target === currentNode || (edge.source === currentNode && visitedNodes.has(edge.target))
+            'edge-active':
+              edge.target === currentNode ||
+              (edge.source === currentNode && visitedNodes.has(edge.target)),
           }"
           :marker-end="edge.target === currentNode ? 'url(#arrow-active)' : 'url(#arrow)'"
         />
 
         <!-- Node Elements -->
-        <g 
-          v-for="node in layoutNodes" 
+        <g
+          v-for="node in layoutNodes"
           :key="node.nodeId"
           :transform="'translate(' + node.x + ',' + node.y + ')'"
           class="graph-node-group"
           :class="{
             'node-current': node.nodeId === currentNode,
             'node-visited': visitedNodes.has(node.nodeId),
-            'node-unvisited': !visitedNodes.has(node.nodeId)
+            'node-unvisited': !visitedNodes.has(node.nodeId),
           }"
           @click="selectNode(node.nodeId)"
         >
           <!-- Node Card Shape -->
-          <rect 
-            x="-45" 
-            y="-22" 
-            width="90" 
-            height="44" 
-            rx="6" 
+          <rect
+            x="-45"
+            y="-22"
+            width="90"
+            height="44"
+            rx="6"
             class="node-card"
             :filter="node.nodeId === currentNode ? 'url(#accent-glow)' : 'url(#shadow)'"
           />
 
           <!-- Node Status Indicator Dot -->
-          <circle 
-            cx="-30" 
-            cy="0" 
-            r="4" 
+          <circle
+            cx="-30"
+            cy="0"
+            r="4"
             class="node-status-dot"
             :class="{ 'has-image': node.image }"
           />
@@ -126,7 +134,7 @@ export default {
   props: {
     nodes: { type: Array, required: true },
     currentNode: { type: Number, required: true },
-    visitedNodes: { type: Object, required: true } // Sets are passed as objects in vue props
+    visitedNodes: { type: Object, required: true }, // Sets are passed as objects in vue props
   },
   emits: ['select-node'],
   data() {
@@ -136,25 +144,27 @@ export default {
       zoomScale: 1.0,
       isPanning: false,
       startX: 0,
-      startY: 0
-    }
+      startY: 0,
+    };
   },
   computed: {
     layoutNodes() {
       if (!this.nodes) return [];
-      
+
       const layout = {};
       let leafCount = 0;
-      
+
       const walk = (nodeId) => {
         if (nodeId === null || nodeId === undefined || nodeId >= this.nodes.length) return null;
         const node = this.nodes[nodeId];
         if (!node) return null;
-        
+
         const children = (node.choices || [])
-          .map(c => c.nextNodeId)
-          .filter(id => id !== undefined && id !== null && id < this.nodes.length && this.nodes[id]);
-          
+          .map((c) => c.nextNodeId)
+          .filter(
+            (id) => id !== undefined && id !== null && id < this.nodes.length && this.nodes[id]
+          );
+
         const item = {
           nodeId,
           prompt: node.prompt || '',
@@ -162,11 +172,11 @@ export default {
           depth: node.depth || 0,
           children,
           x: (node.depth || 0) * 160 + 60,
-          y: 0
+          y: 0,
         };
-        
+
         layout[nodeId] = item;
-        
+
         if (children.length === 0) {
           // Leaf node!
           item.y = leafCount * 80 + 30;
@@ -181,48 +191,50 @@ export default {
               validChildrenCount++;
             }
           }
-          item.y = validChildrenCount > 0 ? (sumY / validChildrenCount) : (leafCount * 80 + 30);
+          item.y = validChildrenCount > 0 ? sumY / validChildrenCount : leafCount * 80 + 30;
         }
-        
+
         return item;
       };
-      
+
       walk(0);
-      
+
       return Object.values(layout);
     },
     layoutEdges() {
       const edges = [];
       const nodesList = this.layoutNodes;
       const nodeMap = {};
-      nodesList.forEach(n => { nodeMap[n.nodeId] = n; });
-      
-      nodesList.forEach(n => {
-        n.children.forEach(childId => {
+      nodesList.forEach((n) => {
+        nodeMap[n.nodeId] = n;
+      });
+
+      nodesList.forEach((n) => {
+        n.children.forEach((childId) => {
           const child = nodeMap[childId];
           if (child) {
             const x1 = n.x + 45; // Start at right edge of parent node card
             const y1 = n.y;
             const x2 = child.x - 45; // End at left edge of child node card
             const y2 = child.y;
-            
+
             // Smooth horizontal cubic bezier curve
             const cp1x = x1 + 50;
             const cp1y = y1;
             const cp2x = x2 - 50;
             const cp2y = y2;
-            
+
             edges.push({
               id: `${n.nodeId}-${child.nodeId}`,
               path: `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`,
               source: n.nodeId,
-              target: child.nodeId
+              target: child.nodeId,
             });
           }
         });
       });
       return edges;
-    }
+    },
   },
   methods: {
     truncatePrompt(p) {
@@ -256,14 +268,14 @@ export default {
     handleWheel(e) {
       const zoomFactor = 1.1;
       const nextScale = e.deltaY < 0 ? this.zoomScale * zoomFactor : this.zoomScale / zoomFactor;
-      
+
       // Enforce zoom boundaries
       if (nextScale >= 0.4 && nextScale <= 2.5) {
         // Zoom centered on current mouse cursor inside SVG
         const rect = this.$refs.svgCanvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
-        
+
         this.panX = mouseX - (mouseX - this.panX) * (nextScale / this.zoomScale);
         this.panY = mouseY - (mouseY - this.panY) * (nextScale / this.zoomScale);
         this.zoomScale = nextScale;
@@ -281,9 +293,9 @@ export default {
       this.panX = 40;
       this.panY = 80;
       this.zoomScale = 1.0;
-    }
-  }
-}
+    },
+  },
+};
 </script>
 
 <style scoped>
@@ -336,11 +348,13 @@ export default {
   fill: none;
   stroke: var(--border);
   stroke-width: 1.5;
-  transition: stroke var(--transition-normal), stroke-width var(--transition-normal);
+  transition:
+    stroke var(--transition-normal),
+    stroke-width var(--transition-normal);
 }
 .edge-visited {
   stroke: var(--text-muted);
-  stroke-width: 2.0;
+  stroke-width: 2;
 }
 .edge-active {
   stroke: var(--accent);
@@ -354,7 +368,9 @@ export default {
   fill: var(--bg-secondary);
   stroke: var(--border);
   stroke-width: 1.5;
-  transition: fill var(--transition-fast), stroke var(--transition-fast);
+  transition:
+    fill var(--transition-fast),
+    stroke var(--transition-fast);
 }
 .graph-node-group:hover .node-card {
   stroke: var(--accent-hover);
@@ -364,7 +380,7 @@ export default {
 .node-current .node-card {
   fill: var(--accent-soft);
   stroke: var(--accent);
-  stroke-width: 2.0;
+  stroke-width: 2;
 }
 .node-visited .node-card {
   stroke: var(--text-secondary);
@@ -427,8 +443,20 @@ export default {
   display: inline-block;
   border: 1px solid var(--border);
 }
-.legend-color.current { background: var(--accent-soft); border-color: var(--accent); }
-.legend-color.visited { background: var(--bg-secondary); border-color: var(--text-secondary); }
-.legend-color.unvisited { background: var(--bg-secondary); opacity: 0.7; }
-.legend-color.art { background: var(--accent); border-color: var(--accent); }
+.legend-color.current {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.legend-color.visited {
+  background: var(--bg-secondary);
+  border-color: var(--text-secondary);
+}
+.legend-color.unvisited {
+  background: var(--bg-secondary);
+  opacity: 0.7;
+}
+.legend-color.art {
+  background: var(--accent);
+  border-color: var(--accent);
+}
 </style>

@@ -11,10 +11,10 @@ export default {
   props: { toast: { type: Object, required: true } },
   computed: {
     icon() {
-      return { success: '✓', error: '✗', warning: '⚠', info: 'ℹ' }[this.toast.type] || 'ℹ'
-    }
-  }
-}
+      return { success: '✓', error: '✗', warning: '⚠', info: 'ℹ' }[this.toast.type] || 'ℹ';
+    },
+  },
+};
 </script>
 <style scoped>
 .toast-item {
@@ -105,7 +105,9 @@ export default {
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .toast-item__close:hover {

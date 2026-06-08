@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.git/
+uploads/
+pnpm-lock.yaml
+.env
+config.env
+config.env.example

@@ -47,8 +47,10 @@
       <!-- Password Edit Form -->
       <div class="card security-card">
         <h3>Security</h3>
-        <p class="text-muted text-sm mb-md">Update your account password. Must be at least 4 characters long.</p>
-        
+        <p class="text-muted text-sm mb-md">
+          Update your account password. Must be at least 4 characters long.
+        </p>
+
         <form @submit.prevent="updatePassword" class="profile-form">
           <div class="form-group">
             <label for="new-password">New Password</label>
@@ -72,9 +74,9 @@
               required
             />
           </div>
-          
+
           <div v-if="error" class="error-message mb-md">{{ error }}</div>
-          
+
           <button type="submit" class="btn btn-primary" :disabled="saving">
             {{ saving ? 'Saving...' : 'Update Password' }}
           </button>
@@ -84,7 +86,10 @@
       <!-- Danger Zone Card -->
       <div class="card danger-card">
         <h3>Danger Zone</h3>
-        <p class="text-muted text-sm mb-md">Permanently delete your account. This action is irreversible and will purge all stories, choices, and images you have created.</p>
+        <p class="text-muted text-sm mb-md">
+          Permanently delete your account. This action is irreversible and will purge all stories,
+          choices, and images you have created.
+        </p>
         <button @click="showDeleteAccountModal = true" class="btn btn-danger">
           Delete Account...
         </button>
@@ -92,11 +97,18 @@
     </div>
 
     <!-- Delete Account typing confirmation modal -->
-    <div v-if="showDeleteAccountModal" class="delete-account-overlay" @click.self="cancelDeleteAccount">
+    <div
+      v-if="showDeleteAccountModal"
+      class="delete-account-overlay"
+      @click.self="cancelDeleteAccount"
+    >
       <div class="delete-account-modal">
         <h3>Delete your account?</h3>
         <p class="warning-text">⚠️ This action is highly critical and irreversible!</p>
-        <p class="text-muted text-sm mb-md">All your authored stories, nodes, and uploaded images will be permanently erased from disk and database. Please type <strong>delete my account</strong> below to confirm.</p>
+        <p class="text-muted text-sm mb-md">
+          All your authored stories, nodes, and uploaded images will be permanently erased from disk
+          and database. Please type <strong>delete my account</strong> below to confirm.
+        </p>
         <div class="form-group mb-md">
           <input
             v-model="deleteConfirmInput"
@@ -107,10 +119,16 @@
         </div>
         <div v-if="deleteError" class="error-message mb-md">{{ deleteError }}</div>
         <div class="modal-actions">
-          <button @click="deleteAccount" class="btn btn-danger" :disabled="deleteConfirmInput !== 'delete my account' || deleting">
+          <button
+            @click="deleteAccount"
+            class="btn btn-danger"
+            :disabled="deleteConfirmInput !== 'delete my account' || deleting"
+          >
             {{ deleting ? 'Deleting...' : 'Permanently Delete Account' }}
           </button>
-          <button @click="cancelDeleteAccount" class="btn btn-ghost" :disabled="deleting">Cancel</button>
+          <button @click="cancelDeleteAccount" class="btn btn-ghost" :disabled="deleting">
+            Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -118,9 +136,9 @@
 </template>
 
 <script>
-import { useAuthStore } from '@/stores/useAuth.js'
-import { useToast } from '@/stores/useToast.js'
-import { apiFetch } from '@/utils/api.js'
+import { useAuthStore } from '@/stores/useAuth.js';
+import { useToast } from '@/stores/useToast.js';
+import { apiFetch } from '@/utils/api.js';
 
 export default {
   name: 'ProfileView',
@@ -131,7 +149,7 @@ export default {
         storiesCount: 0,
         totalNodes: 0,
         illustratedNodes: 0,
-        memberSince: null
+        memberSince: null,
       },
       newPassword: '',
       confirmPassword: '',
@@ -140,99 +158,99 @@ export default {
       showDeleteAccountModal: false,
       deleteConfirmInput: '',
       deleting: false,
-      deleteError: null
-    }
+      deleteError: null,
+    };
   },
   created() {
-    this.auth = useAuthStore()
-    this.toast = useToast()
+    this.auth = useAuthStore();
+    this.toast = useToast();
   },
   async mounted() {
     if (!this.auth.isLoggedIn) {
-      this.$router.push('/login')
-      return
+      this.$router.push('/login');
+      return;
     }
-    await this.fetchStats()
+    await this.fetchStats();
   },
   methods: {
     async fetchStats() {
       try {
-        const res = await apiFetch('/api/users/stats')
-        if (!res.ok) throw new Error('Failed to load profile metrics')
-        this.stats = await res.json()
+        const res = await apiFetch('/api/users/stats');
+        if (!res.ok) throw new Error('Failed to load profile metrics');
+        this.stats = await res.json();
       } catch (e) {
-        console.error('Failed to load stats:', e)
-        this.toast.addToast('error', 'Could not load statistics dashboard')
+        console.error('Failed to load stats:', e);
+        this.toast.addToast('error', 'Could not load statistics dashboard');
       }
     },
     async updatePassword() {
-      this.error = null
+      this.error = null;
       if (this.newPassword !== this.confirmPassword) {
-        this.error = "Passwords do not match"
-        return
+        this.error = 'Passwords do not match';
+        return;
       }
       if (this.newPassword.length < 4) {
-        this.error = "Password must be at least 4 characters long"
-        return
+        this.error = 'Password must be at least 4 characters long';
+        return;
       }
-      
-      this.saving = true
+
+      this.saving = true;
       try {
         const res = await apiFetch('/api/users/profile', {
           method: 'PUT',
-          body: JSON.stringify({ password: this.newPassword })
-        })
-        
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error || 'Failed to update password')
-        
-        this.toast.addToast('success', 'Password updated successfully!')
-        this.newPassword = ''
-        this.confirmPassword = ''
+          body: JSON.stringify({ password: this.newPassword }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update password');
+
+        this.toast.addToast('success', 'Password updated successfully!');
+        this.newPassword = '';
+        this.confirmPassword = '';
       } catch (e) {
-        this.error = e.message
-        this.toast.addToast('error', 'Failed to update credentials')
+        this.error = e.message;
+        this.toast.addToast('error', 'Failed to update credentials');
       } finally {
-        this.saving = false
+        this.saving = false;
       }
     },
     formatDate(d) {
-      if (!d) return 'Loading...'
+      if (!d) return 'Loading...';
       return new Date(d).toLocaleDateString('en-US', {
         month: 'long',
         day: 'numeric',
-        year: 'numeric'
-      })
+        year: 'numeric',
+      });
     },
     cancelDeleteAccount() {
-      this.showDeleteAccountModal = false
-      this.deleteConfirmInput = ''
-      this.deleteError = null
+      this.showDeleteAccountModal = false;
+      this.deleteConfirmInput = '';
+      this.deleteError = null;
     },
     async deleteAccount() {
-      if (this.deleteConfirmInput !== 'delete my account') return
-      this.deleting = true
-      this.deleteError = null
+      if (this.deleteConfirmInput !== 'delete my account') return;
+      this.deleting = true;
+      this.deleteError = null;
       try {
         const res = await apiFetch('/api/users/me', {
-          method: 'DELETE'
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error || 'Failed to delete account')
+          method: 'DELETE',
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to delete account');
 
-        this.toast.addToast('success', 'Your account has been permanently deleted.')
-        this.cancelDeleteAccount()
-        this.auth.logout() // Automatically logs out and routes to home
+        this.toast.addToast('success', 'Your account has been permanently deleted.');
+        this.cancelDeleteAccount();
+        this.auth.logout(); // Automatically logs out and routes to home
       } catch (e) {
-        console.error('Delete account error:', e)
-        this.deleteError = e.message
-        this.toast.addToast('error', 'Failed to delete account')
+        console.error('Delete account error:', e);
+        this.deleteError = e.message;
+        this.toast.addToast('error', 'Failed to delete account');
       } finally {
-        this.deleting = false
+        this.deleting = false;
       }
-    }
-  }
-}
+    },
+  },
+};
 </script>
 
 <style scoped>
@@ -295,10 +313,12 @@ export default {
   }
 }
 
-.profile-card-inner, .security-card {
+.profile-card-inner,
+.security-card {
   padding: var(--space-xl);
 }
-.profile-card-inner h3, .security-card h3 {
+.profile-card-inner h3,
+.security-card h3 {
   font-size: var(--text-lg);
   font-weight: 700;
   margin-bottom: var(--space-md);
@@ -359,7 +379,9 @@ export default {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.mb-md { margin-bottom: var(--space-md); }
+.mb-md {
+  margin-bottom: var(--space-md);
+}
 
 /* Danger Zone Styles */
 .danger-card {
@@ -419,11 +441,21 @@ export default {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes slideUp {
-  from { transform: translateY(15px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(15px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 </style>

@@ -17,7 +17,7 @@
         </div>
         <div class="form-group">
           <label>Genre</label>
-          <select v-model="genre" class="title-input" style="font-size: var(--text-sm);">
+          <select v-model="genre" class="title-input" style="font-size: var(--text-sm)">
             <option value="Adventure">Adventure</option>
             <option value="Sci-Fi">Sci-Fi</option>
             <option value="Fantasy">Fantasy</option>
@@ -43,7 +43,7 @@
             v-model="tagsInput"
             placeholder="magic, spaceships, mystery, dynamic..."
             class="title-input"
-            style="font-size: var(--text-sm);"
+            style="font-size: var(--text-sm)"
           />
         </div>
         <div class="modal-actions">
@@ -101,11 +101,7 @@
 
         <div class="modal-actions">
           <button class="btn btn-secondary" @click="step = 1">Back</button>
-          <button
-            class="btn btn-primary"
-            @click="confirmOpening"
-            :disabled="!selectedPrompt"
-          >
+          <button class="btn btn-primary" @click="confirmOpening" :disabled="!selectedPrompt">
             {{ creating ? 'Creating...' : 'Create Story' }}
           </button>
         </div>
@@ -113,7 +109,10 @@
 
       <!-- Step 3: Creating -->
       <div v-if="step === 3" class="step step-creating">
-        <div class="spinner" style="width:40px;height:40px;border-width:4px;margin-bottom:var(--space-lg)"></div>
+        <div
+          class="spinner"
+          style="width: 40px; height: 40px; border-width: 4px; margin-bottom: var(--space-lg)"
+        ></div>
         <h2>Creating your story...</h2>
         <div class="progress-track">
           <div class="progress-item" :class="{ done: progress >= 1 }">
@@ -131,8 +130,8 @@
 </template>
 
 <script>
-import { useToast } from '@/stores/useToast.js'
-import { apiFetch } from '@/utils/api.js'
+import { useToast } from '@/stores/useToast.js';
+import { apiFetch } from '@/utils/api.js';
 
 export default {
   name: 'CreateStoryDialog',
@@ -149,67 +148,68 @@ export default {
       progress: 0,
       genre: 'Adventure',
       description: '',
-      tagsInput: ''
-    }
+      tagsInput: '',
+    };
   },
   computed: {
     selectedPrompt() {
-      if (this.customPrompt.trim()) return this.customPrompt.trim()
-      if (this.selectedSuggestion !== null) return this.suggestions[this.selectedSuggestion]
-      return null
-    }
+      if (this.customPrompt.trim()) return this.customPrompt.trim();
+      if (this.selectedSuggestion !== null) return this.suggestions[this.selectedSuggestion];
+      return null;
+    },
   },
   mounted() {
     this.$nextTick(() => {
-      if (this.$refs.titleInput) this.$refs.titleInput.focus()
-    })
+      if (this.$refs.titleInput) this.$refs.titleInput.focus();
+    });
   },
   methods: {
     async generateSuggestions() {
-      if (!this.title.trim()) return
-      this.generating = true
+      if (!this.title.trim()) return;
+      this.generating = true;
       try {
         const res = await apiFetch('/api/generate-prompt', {
           method: 'POST',
-          body: JSON.stringify({ title: this.title.trim() })
-        })
-        if (!res.ok) throw new Error('Failed to generate')
-        const data = await res.json()
-        this.suggestions = data.prompts || []
+          body: JSON.stringify({ title: this.title.trim() }),
+        });
+        if (!res.ok) throw new Error('Failed to generate');
+        const data = await res.json();
+        this.suggestions = data.prompts || [];
       } catch (e) {
         this.suggestions = [
           `Once upon a time, in a world of ${this.title}, an adventure began...`,
           `The story of ${this.title} starts on an ordinary day...`,
-          `In the heart of ${this.title}, a mystery awaited...`
-        ]
+          `In the heart of ${this.title}, a mystery awaited...`,
+        ];
       } finally {
-        this.generating = false
+        this.generating = false;
       }
     },
     selectSuggestion(index) {
-      this.selectedSuggestion = this.selectedSuggestion === index ? null : index
-      if (this.selectedSuggestion !== null) this.customPrompt = ''
+      this.selectedSuggestion = this.selectedSuggestion === index ? null : index;
+      if (this.selectedSuggestion !== null) this.customPrompt = '';
     },
     proceedFromTitle() {
-      if (this.title.trim()) this.step = 2
+      if (this.title.trim()) this.step = 2;
     },
     async confirmOpening() {
-      const prompt = this.selectedPrompt
-      if (!prompt) return
+      const prompt = this.selectedPrompt;
+      if (!prompt) return;
 
-      this.step = 3
-      this.creating = true
-      this.progress = 0
+      this.step = 3;
+      this.creating = true;
+      this.progress = 0;
 
       try {
-        const toast = useToast()
+        const toast = useToast();
 
-        const tags = this.tagsInput.split(',')
-          .map(t => t.trim())
-          .filter(t => t.length > 0)
+        const tags = this.tagsInput
+          .split(',')
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0);
 
         // Step A: Create the story
-        this.progress = 0
+        this.progress = 0;
         const storyRes = await apiFetch('/api/stories', {
           method: 'POST',
           body: JSON.stringify({
@@ -218,52 +218,52 @@ export default {
             description: this.description.trim(),
             tags: tags,
             nodes: [{ prompt, choices: [], image: '' }],
-            lastNodeId: 0
-          })
-        })
-        if (!storyRes.ok) throw new Error('Failed to create story')
-        const storyData = await storyRes.json()
-        const storyId = storyData.insertedId || storyData._id
-        this.progress = 1
- 
+            lastNodeId: 0,
+          }),
+        });
+        if (!storyRes.ok) throw new Error('Failed to create story');
+        const storyData = await storyRes.json();
+        const storyId = storyData.insertedId || storyData._id;
+        this.progress = 1;
+
         // Step B: Generate image for node 0
         const imgRes = await apiFetch('/api/generate-image', {
           method: 'POST',
           body: JSON.stringify({
             prompt,
             storyId: storyId,
-            nodeIndex: 0
-          })
-        })
+            nodeIndex: 0,
+          }),
+        });
         if (imgRes.ok) {
-          const imgData = await imgRes.json()
+          const imgData = await imgRes.json();
           if (imgData.imageUrl) {
             await apiFetch(`/api/stories/${storyId}/node/0/image`, {
               method: 'PUT',
-              body: JSON.stringify({ image: imgData.imageUrl })
-            })
+              body: JSON.stringify({ image: imgData.imageUrl }),
+            });
           }
         }
-        this.progress = 2
+        this.progress = 2;
 
-        toast.addToast('success', 'Story created!')
-        this.$emit('created', storyId)
+        toast.addToast('success', 'Story created!');
+        this.$emit('created', storyId);
       } catch (e) {
-        console.error('Create story error:', e)
-        useToast().addToast('error', 'Failed to create story')
-        this.step = 2
+        console.error('Create story error:', e);
+        useToast().addToast('error', 'Failed to create story');
+        this.step = 2;
       } finally {
-        this.creating = false
+        this.creating = false;
       }
     },
     handleOverlayClick() {
-      if (this.step !== 3) this.cancel()
+      if (this.step !== 3) this.cancel();
     },
     cancel() {
-      if (this.step !== 3) this.$emit('close')
-    }
-  }
-}
+      if (this.step !== 3) this.$emit('close');
+    },
+  },
+};
 </script>
 
 <style scoped>
@@ -296,40 +296,119 @@ export default {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
-.step { min-height: 200px; }
-.step h2 { margin-bottom: var(--space-xs); font-size: var(--text-2xl); font-weight: 800; color: var(--text-primary); letter-spacing: -0.02em; }
-.step-indicator { font-size: var(--text-xs); color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: var(--space-sm); }
-.text-muted { color: var(--text-muted); font-size: var(--text-sm); margin-bottom: var(--space-lg); }
-
-.form-group { margin: var(--space-lg) 0; }
-.form-group label { display: block; margin-bottom: var(--space-xs); font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); }
-
-.title-input, .prompt-input {
-  width: 100%; padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--border); border-radius: var(--radius-md);
-  background: var(--bg-primary); color: var(--text-primary);
-  font-size: var(--text-base); transition: all var(--transition-fast);
-  box-sizing: border-box; font-family: var(--font-sans);
+.step {
+  min-height: 200px;
 }
-.title-input:hover, .prompt-input:hover { border-color: var(--text-muted); }
-.title-input:focus, .prompt-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--bg-secondary); }
-.prompt-input { resize: vertical; min-height: 80px; }
+.step h2 {
+  margin-bottom: var(--space-xs);
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.step-indicator {
+  font-size: var(--text-xs);
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: var(--space-sm);
+}
+.text-muted {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-lg);
+}
 
-.modal-actions { display: flex; justify-content: flex-end; gap: var(--space-sm); margin-top: var(--space-2xl); }
+.form-group {
+  margin: var(--space-lg) 0;
+}
+.form-group label {
+  display: block;
+  margin-bottom: var(--space-xs);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
 
-.divider { display: flex; align-items: center; gap: var(--space-md); margin: var(--space-xl) 0; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }
-.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.title-input,
+.prompt-input {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  transition: all var(--transition-fast);
+  box-sizing: border-box;
+  font-family: var(--font-sans);
+}
+.title-input:hover,
+.prompt-input:hover {
+  border-color: var(--text-muted);
+}
+.title-input:focus,
+.prompt-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: var(--bg-secondary);
+}
+.prompt-input {
+  resize: vertical;
+  min-height: 80px;
+}
 
-.ai-section { text-align: center; margin: var(--space-lg) 0; }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-2xl);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin: var(--space-xl) 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.ai-section {
+  text-align: center;
+  margin: var(--space-lg) 0;
+}
 .btn-outline {
   background: transparent;
   border: 1.5px dashed var(--accent);
@@ -350,32 +429,133 @@ export default {
   transform: translateY(-1px);
 }
 
-.generating-hint { display: flex; align-items: center; justify-content: center; gap: var(--space-sm); padding: var(--space-xl); color: var(--text-muted); font-weight: 500; }
+.generating-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-xl);
+  color: var(--text-muted);
+  font-weight: 500;
+}
 
-.suggestions { margin: var(--space-lg) 0; }
-.suggestions label { display: block; margin-bottom: var(--space-md); font-size: var(--text-sm); font-weight: 700; color: var(--text-secondary); }
+.suggestions {
+  margin: var(--space-lg) 0;
+}
+.suggestions label {
+  display: block;
+  margin-bottom: var(--space-md);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
 
 .suggestion-card {
-  display: flex; align-items: flex-start; gap: var(--space-md);
-  padding: var(--space-md); margin-bottom: var(--space-sm);
-  border: 1px solid var(--border); border-radius: var(--radius-md);
-  cursor: pointer; transition: all var(--transition-fast);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
   background: var(--bg-primary);
 }
-.suggestion-card:hover { border-color: var(--accent); background: var(--accent-soft); transform: translateX(2px); }
-.suggestion-card.selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); }
+.suggestion-card:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  transform: translateX(2px);
+}
+.suggestion-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent);
+}
 
-.suggestion-num { width: 24px; height: 24px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: var(--text-xs); font-weight: 700; color: var(--text-secondary); flex-shrink: 0; transition: all var(--transition-fast); }
-.suggestion-card.selected .suggestion-num { background: var(--accent); color: #fff; }
-.suggestion-text { flex: 1; font-size: var(--text-sm); line-height: 1.5; color: var(--text-primary); }
-.suggestion-check { color: var(--accent); font-weight: 700; font-size: var(--text-lg); align-self: center; }
+.suggestion-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+.suggestion-card.selected .suggestion-num {
+  background: var(--accent);
+  color: #fff;
+}
+.suggestion-text {
+  flex: 1;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+.suggestion-check {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  align-self: center;
+}
 
-.progress-track { display: flex; flex-direction: column; gap: var(--space-md); margin-top: var(--space-xl); width: 100%; max-width: 320px; }
-.progress-item { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm); border-radius: var(--radius-md); transition: all var(--transition-normal); }
-.progress-bullet { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: var(--text-xs); font-weight: 700; color: var(--text-muted); transition: all var(--transition-normal); background: var(--bg-primary); }
-.progress-item.done .progress-bullet { border-color: var(--success); background: var(--success); color: #fff; box-shadow: 0 0 8px var(--accent-soft); }
-.progress-label { font-size: var(--text-sm); color: var(--text-muted); transition: all var(--transition-normal); }
-.progress-item.done .progress-label { color: var(--text-primary); font-weight: 600; }
+.progress-track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-xl);
+  width: 100%;
+  max-width: 320px;
+}
+.progress-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-normal);
+}
+.progress-bullet {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  transition: all var(--transition-normal);
+  background: var(--bg-primary);
+}
+.progress-item.done .progress-bullet {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+  box-shadow: 0 0 8px var(--accent-soft);
+}
+.progress-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  transition: all var(--transition-normal);
+}
+.progress-item.done .progress-label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
 
-.step-creating { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px; text-align: center; }
+.step-creating {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  text-align: center;
+}
 </style>

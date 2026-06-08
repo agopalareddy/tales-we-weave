@@ -2,7 +2,9 @@
   <div class="faq-view">
     <div class="faq-header">
       <h2>Frequently Asked Questions</h2>
-      <p class="text-muted">Everything you need to know about the Interactive Storybook platform.</p>
+      <p class="text-muted">
+        Everything you need to know about the Interactive Storybook platform.
+      </p>
     </div>
 
     <div class="faq-layout">
@@ -32,12 +34,7 @@
               <h4>{{ item.question }}</h4>
               <span class="faq-toggle-arrow">▼</span>
             </div>
-            <transition
-              name="expand"
-              @enter="enter"
-              @after-enter="afterEnter"
-              @leave="leave"
-            >
+            <transition name="expand" @enter="enter" @after-enter="afterEnter" @leave="leave">
               <div v-show="expandedIndices.includes(idx)" class="faq-answer-wrapper">
                 <div class="faq-answer">
                   <p v-html="item.answer"></p>
@@ -63,67 +60,77 @@ export default {
         { id: 'general', name: 'General Storytelling', icon: '📚' },
         { id: 'ai', name: 'AI Writing & Art', icon: '✨' },
         { id: 'graph', name: 'Interactive Graph Map', icon: '🌳' },
-        { id: 'safety', name: 'Safety & Deletions', icon: '🛡️' }
+        { id: 'safety', name: 'Safety & Deletions', icon: '🛡️' },
       ],
       faqs: [
         {
           category: 'general',
           question: 'What is Interactive Storybook?',
-          answer: 'Interactive Storybook is an AI-powered storytelling platform where you can create and read branching narratives. Each choice you make leads to a completely new path, resulting in unique, illustrated, and highly personalized stories.'
+          answer:
+            'Interactive Storybook is an AI-powered storytelling platform where you can create and read branching narratives. Each choice you make leads to a completely new path, resulting in unique, illustrated, and highly personalized stories.',
         },
         {
           category: 'general',
           question: 'How do sparse tree nodes work in stories?',
-          answer: 'Stories are structured as a <strong>sparse tree array</strong>. The root scene is always Node 0. Clicking a choice triggers the creation of a new target node index linked back to its parent. Because the tree is sparse, taking different paths creates populated nodes at specific indices without shifting the rest, preserving narrative links perfectly.'
+          answer:
+            'Stories are structured as a <strong>sparse tree array</strong>. The root scene is always Node 0. Clicking a choice triggers the creation of a new target node index linked back to its parent. Because the tree is sparse, taking different paths creates populated nodes at specific indices without shifting the rest, preserving narrative links perfectly.',
         },
         {
           category: 'ai',
           question: 'Which AI engines write and illustrate the scenes?',
-          answer: 'We utilize state-of-the-art models: <strong>Gemini Flash-lite</strong> is called to generate creative scene choice suggestions and openings based on your input. <strong>Fal.ai (Flux Schnell)</strong> is triggered to compile and render breathtaking custom illustration artwork for each individual scene.'
+          answer:
+            'We utilize state-of-the-art models: <strong>Gemini Flash-lite</strong> is called to generate creative scene choice suggestions and openings based on your input. <strong>Fal.ai (Flux Schnell)</strong> is triggered to compile and render breathtaking custom illustration artwork for each individual scene.',
         },
         {
           category: 'ai',
           question: 'What is the "AI Art Director" and how do I use it?',
-          answer: 'The AI Art Director is a collapsible visual style editor available on story scenes you author. You can type descriptive style overrides (e.g. <i>"Ghibli anime style, warm sunset lighting, highly detailed sketch"</i>). When you click the Regenerate (🔄) choice/artwork button, the AI will merge this visual override to produce consistent thematic art!'
+          answer:
+            'The AI Art Director is a collapsible visual style editor available on story scenes you author. You can type descriptive style overrides (e.g. <i>"Ghibli anime style, warm sunset lighting, highly detailed sketch"</i>). When you click the Regenerate (🔄) choice/artwork button, the AI will merge this visual override to produce consistent thematic art!',
         },
         {
           category: 'graph',
           question: 'How do I navigate using the zoomable SVG Narrative Node Graph?',
-          answer: 'Inside the story display, you can toggle the collapsible Narrative Tree panel. It renders a dynamic SVG map showing the branching structure. You can <strong>drag and pan</strong> the canvas, <strong>scroll/pinch to zoom</strong> in or out, and <strong>click on any circle node</strong> to instantly jump your reader view to that exact scene!'
+          answer:
+            'Inside the story display, you can toggle the collapsible Narrative Tree panel. It renders a dynamic SVG map showing the branching structure. You can <strong>drag and pan</strong> the canvas, <strong>scroll/pinch to zoom</strong> in or out, and <strong>click on any circle node</strong> to instantly jump your reader view to that exact scene!',
         },
         {
           category: 'graph',
           question: 'What do the different colors on the Node Graph represent?',
-          answer: 'The graph dynamically colors nodes based on your reading progress: The <strong>green glowing node</strong> represents your active scene. <strong>Slate filled nodes</strong> are scenes you have already visited. <strong>Dashed borders or uncolored circles</strong> represent unexplored branches.'
+          answer:
+            'The graph dynamically colors nodes based on your reading progress: The <strong>green glowing node</strong> represents your active scene. <strong>Slate filled nodes</strong> are scenes you have already visited. <strong>Dashed borders or uncolored circles</strong> represent unexplored branches.',
         },
         {
           category: 'safety',
           question: 'How does Reader Progress Bookmarking work?',
-          answer: 'When you are logged in as a registered user, the system automatically saves your exact scene progress in the database when you make choices. When returning to a story from the catalog, clicking "Read" automatically loads your exact saved scene location so you can resume seamlessly.'
+          answer:
+            'When you are logged in as a registered user, the system automatically saves your exact scene progress in the database when you make choices. When returning to a story from the catalog, clicking "Read" automatically loads your exact saved scene location so you can resume seamlessly.',
         },
         {
           category: 'safety',
           question: 'Can I delete specific scenes from my stories?',
-          answer: 'Yes! Authors can click the trash icon (🗑️) beside the prompt editor. To preserve tree integrity, we utilize <strong>intelligent cascading deletion</strong>—deleting a scene automatically purges all of its descendant branches and disconnects the choice in the parent node. <strong>Associated custom images on disk</strong> are also permanently unlinked to maintain storage efficiency. (Deleting Scene 0 deletes the story itself).'
+          answer:
+            'Yes! Authors can click the trash icon (🗑️) beside the prompt editor. To preserve tree integrity, we utilize <strong>intelligent cascading deletion</strong>—deleting a scene automatically purges all of its descendant branches and disconnects the choice in the parent node. <strong>Associated custom images on disk</strong> are also permanently unlinked to maintain storage efficiency. (Deleting Scene 0 deletes the story itself).',
         },
         {
           category: 'safety',
           question: 'What is the "Danger Zone" and how do I delete my account?',
-          answer: 'Under your Author Profile dashboard, you can scroll down to the "Danger Zone" card and select "Delete Account...". To prevent accidental purges, you must type <strong>delete my account</strong> in the modal. Executing this permanently erases your user credentials, purges all authored stories from the database, and deletes all custom cover/node illustrations from the server disk.'
+          answer:
+            'Under your Author Profile dashboard, you can scroll down to the "Danger Zone" card and select "Delete Account...". To prevent accidental purges, you must type <strong>delete my account</strong> in the modal. Executing this permanently erases your user credentials, purges all authored stories from the database, and deletes all custom cover/node illustrations from the server disk.',
         },
         {
           category: 'ai',
           question: 'Is there a limit on image generations?',
-          answer: 'Yes. To ensure server stability, we enforce daily and monthly limits on fal.ai generation counts. You can check your real-time usage (daily and monthly remaining counts) by visiting your profile stats dashboard or clicking on the usage indicators.'
-        }
-      ]
-    }
+          answer:
+            'Yes. To ensure server stability, we enforce daily and monthly limits on fal.ai generation counts. You can check your real-time usage (daily and monthly remaining counts) by visiting your profile stats dashboard or clicking on the usage indicators.',
+        },
+      ],
+    };
   },
   computed: {
     filteredFaqs() {
       if (this.activeCategory === 'all') return this.faqs;
-      return this.faqs.filter(faq => faq.category === this.activeCategory);
-    }
+      return this.faqs.filter((faq) => faq.category === this.activeCategory);
+    },
   },
   methods: {
     selectCategory(catId) {
@@ -155,9 +162,9 @@ export default {
       // Force repaint
       el.offsetHeight; // eslint-disable-line no-unused-expressions
       el.style.height = 0;
-    }
-  }
-}
+    },
+  },
+};
 </script>
 
 <style scoped>
@@ -325,7 +332,13 @@ export default {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>
